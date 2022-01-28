@@ -1,6 +1,6 @@
 #include "beldex_logger.h"
 #include "beldexd_rpc.h"
-#include "omq_server.h"
+#include "bmq_server.h"
 
 #include <chrono>
 #include <exception>
@@ -8,15 +8,15 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
-#include <oxenmq/oxenmq.h>
-#include <oxenmq/hex.h>
+#include <bmq/bmq.h>
+#include <bmq/hex.h>
 
 namespace beldex {
 
 beldexd_seckeys get_mn_privkeys(std::string_view beldexd_rpc_address,
         std::function<bool()> keep_trying) {
-    oxenmq::OxenMQ omq{omq_logger, oxenmq::LogLevel::info};
-    omq.start();
+    bmq::BMQ bmq{bmq_logger, bmq::LogLevel::info};
+    bmq.start();
     constexpr auto retry_interval = 5s;
     auto last_try = std::chrono::steady_clock::now() - retry_interval;
     BELDEX_LOG(info, "Retrieving MN keys from beldexd");
@@ -33,10 +33,10 @@ beldexd_seckeys get_mn_privkeys(std::string_view beldexd_rpc_address,
             return {};
         std::promise<beldexd_seckeys> prom;
         auto fut = prom.get_future();
-        auto conn = omq.connect_remote(oxenmq::address{beldexd_rpc_address},
-            [&omq, &prom](auto conn) {
+        auto conn = bmq.connect_remote(bmq::address{beldexd_rpc_address},
+            [&bmq, &prom](auto conn) {
                 BELDEX_LOG(info, "Connected to beldexd; retrieving MN keys");
-                omq.request(conn, "admin.get_master_node_privkey",
+                bmq.request(conn, "admin.get_master_node_privkey",
                     [&prom](bool success, std::vector<std::string> data) {
                         try {
                             if (!success || data.size() < 2) {

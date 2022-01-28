@@ -86,7 +86,7 @@ else()
 
   message(STATUS "Checking submodules")
   check_submodule(vendors/spdlog)
-  check_submodule(vendors/oxen-mq cppzmq)
+  check_submodule(vendors/bmq cppzmq)
   check_submodule(vendors/nlohmann_json)
   check_submodule(vendors/uWebSockets uSockets)
   check_submodule(vendors/cpr)

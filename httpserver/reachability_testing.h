@@ -34,7 +34,7 @@ struct incoming_test_state {
 
 class Swarm;
 
-enum class ReachType { HTTPS, OMQ };
+enum class ReachType { HTTPS, BMQ };
 
 class reachability_testing {
   public:
@@ -99,7 +99,7 @@ class reachability_testing {
     // Track the last time *this node* was tested by other network nodes; used to detect and warn about
     // possible network issues.
     detail::incoming_test_state last_https;
-    detail::incoming_test_state last_omq;
+    detail::incoming_test_state last_bmq;
 
   public:
 
@@ -132,7 +132,7 @@ class reachability_testing {
     // node (e.g. because it is not passing, or because it deregistered).
     void remove_node_from_failing(const legacy_pubkey& pk);
 
-    // Called when this storage server receives an incoming HTTP or OMQ ping
+    // Called when this storage server receives an incoming HTTP or BMQ ping
     void incoming_ping(ReachType type, const clock::time_point& now = clock::now());
 
     // Check whether we received incoming pings recently

@@ -16,9 +16,9 @@
 [submodule "vendors/SQLiteCpp"]
 	path = vendors/SQLiteCpp
 	url = https://github.com/SRombauts/SQLiteCpp.git
-[submodule "network-tests/pyoxenmq"]
-	path = network-tests/pyoxenmq
-	url = https://github.com/oxen-io/oxen-pyoxenmq.git
 [submodule "vendors/bmq"]
 	path = vendors/bmq
 	url = https://github.com/MichaleAnderson/bmq.git
+[submodule "network-tests/pybmq"]
+	path = network-tests/pybmq
+	url = git@github.com:MichaleAnderson/beldex-pybmq.git

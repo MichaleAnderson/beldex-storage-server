@@ -9,7 +9,7 @@
 #include <mutex>
 #include <unordered_map>
 
-namespace oxenmq { class OxenMQ; }
+namespace bmq { class BMQ; }
 
 namespace beldex {
 
@@ -90,7 +90,7 @@ class all_stats_t {
     void cleanup();
 
   public:
-    explicit all_stats_t(oxenmq::OxenMQ& omq);
+    explicit all_stats_t(bmq::BMQ& bmq);
 
     // Returns the number of failed requests for the given pubkey over the last ROLLING_WINDOW
     void record_request_failed(const legacy_pubkey& mn) {

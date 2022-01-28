@@ -9,7 +9,7 @@ add_library(httpserver_lib STATIC
     stats.cpp
     command_line.cpp
     reachability_testing.cpp
-    omq_server.cpp
+    bmq_server.cpp
     request_handler.cpp
     onion_processing.cpp
     beldexd_rpc.cpp
@@ -28,7 +28,7 @@ target_link_libraries(httpserver_lib PUBLIC
     jemalloc::jemalloc
     OpenSSL::SSL OpenSSL::Crypto
     nlohmann_json::nlohmann_json
-    oxenmq::oxenmq
+    bmq::bmq
     Boost::boost Boost::program_options)
 
 # libresolv is needed on linux, but not on BSDs, so only link it if we can find it

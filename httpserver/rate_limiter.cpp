@@ -3,7 +3,7 @@
 #include "beldex_common.h"
 
 #include <chrono>
-#include <oxenmq/oxenmq.h>
+#include <bmq/bmq.h>
 
 #include <algorithm>
 
@@ -27,8 +27,8 @@ constexpr microseconds FILL_EMPTY_BUCKET_US = TOKEN_PERIOD_US * RateLimiter::BUC
 
 }
 
-RateLimiter::RateLimiter(oxenmq::OxenMQ& omq) {
-    omq.add_timer([this] {
+RateLimiter::RateLimiter(bmq::BMQ& bmq) {
+    bmq.add_timer([this] {
         std::lock_guard lock{mutex_};
         clean_buckets(steady_clock::now());
     }, 10s);

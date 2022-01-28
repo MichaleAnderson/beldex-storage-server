@@ -7,17 +7,17 @@
 #include <type_traits>
 #include <unordered_set>
 
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
+#include <bmq/base64.h>
+#include <bmq/hex.h>
 
 namespace beldex::rpc {
 
 using nlohmann::json;
 using std::chrono::system_clock;
-using oxenmq::bt_dict;
-using oxenmq::bt_dict_consumer;
-using oxenmq::bt_list;
-using oxenmq::bt_value;
+using bmq::bt_dict;
+using bmq::bt_dict_consumer;
+using bmq::bt_list;
+using bmq::bt_value;
 
 namespace {
 
@@ -172,9 +172,9 @@ static void load_pk_signature(
         if (rpc.pubkey.type() != 5)
             throw parse_error{"pubkey_ed25519 is only permitted for 05[...] pubkeys"};
         if (pk_ed->size() == 64) {
-            if (!oxenmq::is_hex(*pk_ed))
+            if (!bmq::is_hex(*pk_ed))
                 throw parse_error{"invalid pubkey_ed25519: value is not hex"};
-            oxenmq::from_hex(pk_ed->begin(), pk_ed->end(), rpc.pubkey_ed25519.emplace().begin());
+            bmq::from_hex(pk_ed->begin(), pk_ed->end(), rpc.pubkey_ed25519.emplace().begin());
         } else if (pk_ed->size() == 32) {
             std::memcpy(rpc.pubkey_ed25519.emplace().data(), pk_ed->data(), pk_ed->size());
         } else {
@@ -183,9 +183,9 @@ static void load_pk_signature(
     }
 
     if constexpr (std::is_same_v<json, Dict>) {
-        if (!oxenmq::is_base64(*sig) || !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
+        if (!bmq::is_base64(*sig) || !(sig->size() == 88 || (sig->size() == 86 && sig->substr(84) == "==")))
             throw parse_error{"invalid signature: expected base64 encoded Ed25519 signature"};
-        oxenmq::from_base64(sig->begin(), sig->end(), rpc.signature.begin());
+        bmq::from_base64(sig->begin(), sig->end(), rpc.signature.begin());
     } else {
         if (sig->size() != 64)
             throw parse_error{"invalid signature: expected 64-byte Ed25519 signature"};
@@ -230,14 +230,14 @@ static void load(store& s, Dict& d) {
     require("data", data);
     if constexpr (std::is_same_v<Dict, json>) {
         // For json we require data be base64 encoded
-        if (!oxenmq::is_base64(*data))
+        if (!bmq::is_base64(*data))
             throw parse_error{"Invalid 'data' value: not base64 encoded"};
         static_assert(store::MAX_MESSAGE_BODY % 3 == 0,
                 "MAX_MESSAGE_BODY should be divisible by 3 so that max base64 encoded size avoids padding");
         if (data->size() > store::MAX_MESSAGE_BODY / 3 * 4)
             throw parse_error{fmt::format("Message body exceeds maximum allowed length of {} bytes",
                     store::MAX_MESSAGE_BODY)};
-        s.data = oxenmq::from_base64(*data);
+        s.data = bmq::from_base64(*data);
     } else {
         // Otherwise (i.e. bencoded) then we take data as bytes
         if (data->size() > store::MAX_MESSAGE_BODY)
@@ -289,12 +289,12 @@ static void load(retrieve& r, Dict& d) {
         if (last_hash->empty()) // Treat empty string as not provided
             last_hash.reset();
         else if (last_hash->size() == 43) {
-            if (!oxenmq::is_base64(*last_hash))
+            if (!bmq::is_base64(*last_hash))
                 throw parse_error{"Invalid last_hash: not base64"};
         }
         // TODO: Old hash format, can remove 14+ days after 2.2.0 upgrade takes effect
         else if (last_hash->size() == 128) {
-            if (!oxenmq::is_hex(*last_hash))
+            if (!bmq::is_hex(*last_hash))
                 throw parse_error{"Invalid last_hash: not hex"};
         }
         else
@@ -307,11 +307,11 @@ void retrieve::load_from(bt_dict_consumer params) { load(*this, params); }
 
 static bool is_valid_message_hash(std::string_view hash) {
     return
-        (hash.size() == 43 && oxenmq::is_base64(hash))
+        (hash.size() == 43 && bmq::is_base64(hash))
         ||
         // TODO: remove this in the future, once everything has been upgraded to a SS
         // that uses 43-byte base64 string hashes instead.
-        (hash.size() == 128 && oxenmq::is_hex(hash));
+        (hash.size() == 128 && bmq::is_hex(hash));
 }
 
 template <typename Dict>

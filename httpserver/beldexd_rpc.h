@@ -9,8 +9,8 @@ namespace beldex {
 
 using beldexd_seckeys = std::tuple<legacy_seckey, ed25519_seckey, x25519_seckey>;
 
-// Synchronously retrieves MN private keys from beldex via the given oxenmq address.  This constructs
-// a temporary OxenMQ instance to do the request (because generally storage server will have to
+// Synchronously retrieves MN private keys from beldex via the given bmq address.  This constructs
+// a temporary BMQ instance to do the request (because generally storage server will have to
 // re-construct one once we have the private keys).
 //
 // Returns legacy privkey; ed25519 privkey; x25519 privkey.

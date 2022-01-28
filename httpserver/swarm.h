@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include <oxenmq/auth.h>
+#include <bmq/auth.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -21,7 +21,7 @@ struct SwarmInfo {
 struct block_update {
     std::vector<SwarmInfo> swarms;
     std::vector<mn_record> decommissioned_nodes;
-    oxenmq::pubkey_set active_x25519_pubkeys;
+    bmq::pubkey_set active_x25519_pubkeys;
     uint64_t height;
     std::string block_hash;
     int hardfork;

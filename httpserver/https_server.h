@@ -11,7 +11,7 @@
 
 #include <uWebSockets/App.h>
 
-namespace oxenmq { class OxenMQ; }
+namespace bmq { class BMQ; }
 
 namespace beldex {
 
@@ -46,7 +46,7 @@ public:
     ~HTTPSServer();
 
     /// Starts the event loop in the thread handling http requests.  Core must have been initialized
-    /// and OxenMQ started.  Will propagate an exception from the thread if startup fails.
+    /// and BMQ started.  Will propagate an exception from the thread if startup fails.
     void start();
 
     /// Closes the http server connection.  Can safely be called multiple times, or to abort a
@@ -126,8 +126,8 @@ private:
     bool cors_any_ = false;
     // Our owning master node
     MasterNode& master_node_;
-    // OMQ reference (from master_node_)
-    oxenmq::OxenMQ& omq_;
+    // BMQ reference (from master_node_)
+    bmq::BMQ& bmq_;
     // Request handler
     RequestHandler& request_handler_;
     // Rate limiter for direct client requests

@@ -7,7 +7,7 @@
 
 #include "beldexd_key.h"
 
-namespace oxenmq { class OxenMQ; }
+namespace bmq { class BMQ; }
 
 /// https://en.wikipedia.org/wiki/Token_bucket
 
@@ -24,7 +24,7 @@ class RateLimiter {
     inline constexpr static uint32_t MAX_CLIENTS = 10000;
 
     RateLimiter() = delete;
-    RateLimiter(oxenmq::OxenMQ& omq);
+    RateLimiter(bmq::BMQ& bmq);
 
     bool should_rate_limit(
             const legacy_pubkey& pubkey,

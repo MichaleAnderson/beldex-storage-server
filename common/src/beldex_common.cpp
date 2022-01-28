@@ -1,20 +1,20 @@
 #include "beldex_common.h"
-#include <oxenmq/hex.h>
+#include <bmq/hex.h>
 
 namespace beldex {
 
 user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
-    if (pk.size() == USER_PUBKEY_SIZE_HEX && oxenmq::is_hex(pk)) {
+    if (pk.size() == USER_PUBKEY_SIZE_HEX && bmq::is_hex(pk)) {
         uint8_t netid;
-        oxenmq::from_hex(pk.begin(), pk.begin() + 2, &netid);
+        bmq::from_hex(pk.begin(), pk.begin() + 2, &netid);
         network_ = netid;
-        pubkey_ = oxenmq::from_hex(pk.substr(2));
+        pubkey_ = bmq::from_hex(pk.substr(2));
     } else if (pk.size() == USER_PUBKEY_SIZE_BYTES) {
         network_ = static_cast<uint8_t>(pk.front());
         pubkey_ = pk.substr(1);
-    } else if (!is_mainnet && pk.size() == USER_PUBKEY_SIZE_HEX - 2 && oxenmq::is_hex(pk)) {
+    } else if (!is_mainnet && pk.size() == USER_PUBKEY_SIZE_HEX - 2 && bmq::is_hex(pk)) {
         network_ = 5;
-        pubkey_ = oxenmq::from_hex(pk);
+        pubkey_ = bmq::from_hex(pk);
     } else if (!is_mainnet && pk.size() == USER_PUBKEY_SIZE_BYTES - 1) {
         network_ = 5;
         pubkey_ = pk;
@@ -26,7 +26,7 @@ user_pubkey_t& user_pubkey_t::load(std::string_view pk) {
 }
 
 std::string user_pubkey_t::hex() const {
-    return oxenmq::to_hex(pubkey_);
+    return bmq::to_hex(pubkey_);
 }
 
 std::string user_pubkey_t::prefixed_hex() const {
@@ -36,8 +36,8 @@ std::string user_pubkey_t::prefixed_hex() const {
     hex.reserve(USER_PUBKEY_SIZE_HEX);
     auto bi = std::back_inserter(hex);
     if (uint8_t netid = type(); !(netid == 0 && !is_mainnet))
-        oxenmq::to_hex(&netid, &netid+1, bi);
-    oxenmq::to_hex(pubkey_.begin(), pubkey_.end(), bi);
+        bmq::to_hex(&netid, &netid+1, bi);
+    bmq::to_hex(pubkey_.begin(), pubkey_.end(), bi);
     return hex;
 }
 

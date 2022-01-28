@@ -10,12 +10,12 @@
 #include "utils.hpp"
 #include "version.h"
 
-#include "omq_server.h"
+#include "bmq_server.h"
 #include "request_handler.h"
 
 #include <sodium/core.h>
-#include <oxenmq/oxenmq.h>
-#include <oxenmq/hex.h>
+#include <bmq/bmq.h>
+#include <bmq/hex.h>
 
 #include <csignal>
 #include <cstdlib>
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
 
     BELDEX_LOG(info, "Setting log level to {}", options.log_level);
     BELDEX_LOG(info, "Setting database location to {}", data_dir);
-    BELDEX_LOG(info, "Connecting to beldexd @ {}", options.beldexd_omq_rpc);
+    BELDEX_LOG(info, "Connecting to beldexd @ {}", options.beldexd_bmq_rpc);
 
     if (sodium_init() != 0) {
         BELDEX_LOG(err, "Could not initialize libsodium");
@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
 
 #ifndef INTEGRATION_TEST
         const auto [private_key, private_key_ed25519, private_key_x25519] =
-            get_mn_privkeys(options.beldexd_omq_rpc, [] { return signalled == 0; });
+            get_mn_privkeys(options.beldexd_bmq_rpc, [] { return signalled == 0; });
 #else
         // Normally we request the key from daemon, but in integrations/swarm
         // testing we are not able to do that, so we extract the key as a
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        mn_record me{"0.0.0.0", options.port, options.omq_port,
+        mn_record me{"0.0.0.0", options.port, options.bmq_port,
                 private_key.pubkey(), private_key_ed25519.pubkey(), private_key_x25519.pubkey()};
 
         BELDEX_LOG(info, "Retrieved keys from beldexd; our MN pubkeys are:");
@@ -183,17 +183,17 @@ int main(int argc, char* argv[]) {
         if (!exists(ssl_dh))
             generate_dh_pem(ssl_dh);
 
-        // Set up oxenmq now, but don't actually start it until after we set up the MasterNode
-        // instance (because MasterNode and OxenmqServer reference each other).
-        auto oxenmq_server_ptr = std::make_unique<OxenmqServer>(me, private_key_x25519, stats_access_keys);
-        auto& oxenmq_server = *oxenmq_server_ptr;
+        // Set up bmq now, but don't actually start it until after we set up the MasterNode
+        // instance (because MasterNode and bmqServer reference each other).
+        auto bmq_server_ptr = std::make_unique<bmqServer>(me, private_key_x25519, stats_access_keys);
+        auto& bmq_server = *bmq_server_ptr;
 
         MasterNode master_node{
-            me, private_key, oxenmq_server, data_dir, options.force_start};
+            me, private_key, bmq_server, data_dir, options.force_start};
 
         RequestHandler request_handler{master_node, channel_encryption, private_key_ed25519};
 
-        RateLimiter rate_limiter{*oxenmq_server};
+        RateLimiter rate_limiter{*bmq_server};
 
         HTTPSServer https_server{master_node, request_handler, rate_limiter,
             {{options.ip, options.port, true}},
@@ -201,21 +201,21 @@ int main(int argc, char* argv[]) {
             {me.pubkey_legacy, private_key}};
 
 
-        oxenmq_server.init(&master_node, &request_handler, &rate_limiter,
-                oxenmq::address{options.beldexd_omq_rpc});
+        bmq_server.init(&master_node, &request_handler, &rate_limiter,
+                bmq::address{options.beldexd_bmq_rpc});
 
         https_server.start();
 
 #ifdef ENABLE_SYSTEMD
         sd_notify(0, "READY=1");
-        oxenmq_server->add_timer([&master_node] {
+        bmq_server->add_timer([&master_node] {
             sd_notify(0, ("WATCHDOG=1\nSTATUS=" + master_node.get_status_line()).c_str());
         }, 10s);
 #endif
 
         // Log general stats at startup and again every hour
         BELDEX_LOG(info, master_node.get_status_line());
-        oxenmq_server->add_timer(
+        bmq_server->add_timer(
                 [&master_node] { BELDEX_LOG(info, master_node.get_status_line()); }, 1h);
 
         while (signalled.load() == 0)
@@ -225,8 +225,8 @@ int main(int argc, char* argv[]) {
         master_node.shutdown();
         BELDEX_LOG(info, "Stopping https server");
         https_server.shutdown(true);
-        BELDEX_LOG(info, "Stopping omq server");
-        oxenmq_server_ptr.reset();
+        BELDEX_LOG(info, "Stopping bmq server");
+        bmq_server_ptr.reset();
         BELDEX_LOG(info, "Shutting down");
     } catch (const std::exception& e) {
         // It seems possible for logging to throw its own exception,

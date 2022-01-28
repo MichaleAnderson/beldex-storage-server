@@ -5,15 +5,15 @@
 #include "beldex_logger.h"
 #include "request_handler.h"
 #include "master_node.h"
-#include "omq_server.h"
+#include "bmq_server.h"
 #include "signature.h"
 #include "string_utils.hpp"
 
 #include <boost/endian/conversion.hpp>
 #include <chrono>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
-#include <oxenmq/oxenmq.h>
+#include <bmq/base64.h>
+#include <bmq/hex.h>
+#include <bmq/bmq.h>
 #include <nlohmann/json.hpp>
 #include <variant>
 
@@ -61,18 +61,18 @@ HTTPSServer::HTTPSServer(
         legacy_keypair legacy_keys
         ) :
     master_node_{mn},
-    omq_{*master_node_.omq_server()},
+    bmq_{*master_node_.bmq_server()},
     request_handler_{rh},
     rate_limiter_{rl},
     legacy_keys_{std::move(legacy_keys)},
-    cert_signature_{oxenmq::to_base64(util::view_guts(
+    cert_signature_{bmq::to_base64(util::view_guts(
         generate_signature(hash_data(slurp_file(ssl_cert)), legacy_keys_)
     ))}
 {
 
     // Add a category for handling incoming https requests
-    omq_.add_category("https",
-            oxenmq::AuthLevel::basic,
+    bmq_.add_category("https",
+            bmq::AuthLevel::basic,
             2, // minimum # of threads reserved threads for this category
             1000 // max queued requests
     );
@@ -214,7 +214,7 @@ namespace {
 
     struct call_data {
         HTTPSServer& https;
-        oxenmq::OxenMQ& omq;
+        bmq::BMQ& bmq;
         HttpResponse& res;
         Request request;
         std::vector<std::pair<std::string, std::string>> extra_headers;
@@ -307,7 +307,7 @@ namespace {
             result << ']';
         }
         else
-            result << "{unknown:" << oxenmq::to_hex(addr) << "}";
+            result << "{unknown:" << bmq::to_hex(addr) << "}";
         return result.str();
     }
 
@@ -330,7 +330,7 @@ namespace {
     template <typename ReadyCallback>
     static void handle_request(
             HTTPSServer& https,
-            oxenmq::OxenMQ& omq,
+            bmq::BMQ& bmq,
             HttpRequest& req,
             HttpResponse& res,
             ReadyCallback ready,
@@ -350,7 +350,7 @@ namespace {
             }
         }
 
-        std::shared_ptr<call_data> data{new call_data{https, omq, res}};
+        std::shared_ptr<call_data> data{new call_data{https, bmq, res}};
         auto& request = data->request;
         request.remote_addr = get_remote_address(res);
         request.uri = req.getUrl();
@@ -388,7 +388,7 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
         BELDEX_LOG(trace, "Received https ping_test");
         master_node_.update_last_ping(ReachType::HTTPS);
         Response resp{http::OK};
-        resp.headers.emplace_back(http::MNODE_PUBKEY_HEADER, oxenmq::to_base64(legacy_keys_.first.view()));
+        resp.headers.emplace_back(http::MNODE_PUBKEY_HEADER, bmq::to_base64(legacy_keys_.first.view()));
         queue_response_internal(*this, *res, std::move(resp));
     });
 
@@ -421,9 +421,9 @@ void HTTPSServer::create_endpoints(uWS::SSLApp& https)
     https.post("/retrieve_all", [this](HttpResponse* res, HttpRequest* req) {
         handle_request(req, res, [this, started=std::chrono::steady_clock::now()]
                 (std::shared_ptr<call_data> data) mutable {
-            auto& omq = data->omq;
+            auto& bmq = data->bmq;
             auto& request = data->request;
-            omq.inject_task("https", "https:" + request.uri, request.remote_addr,
+            bmq.inject_task("https", "https:" + request.uri, request.remote_addr,
                     [data=std::move(data), started] mutable {
 
                 queue_response(std::move(data), request_handler_.process_retrieve_all());
@@ -514,15 +514,15 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
         }
     };
 
-    handle_request(*this, omq_, req, res, [this](std::shared_ptr<call_data> data) mutable {
+    handle_request(*this, bmq_, req, res, [this](std::shared_ptr<call_data> data) mutable {
         // Now that we have the body, fully validate the mnode signature:
         if (auto validate = validate_mnode_signature(master_node_, data->request);
                 std::holds_alternative<Response>(validate))
             return queue_response(std::move(data), std::move(std::get<Response>(validate)));
 
-        auto& omq = data->omq;
+        auto& bmq = data->bmq;
         auto& request = data->request;
-        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
+        bmq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data)] () mutable {
 
             if (data->replied || data->aborted) return;
@@ -573,7 +573,7 @@ void HTTPSServer::process_storage_test_req(HttpRequest& req, HttpResponse& res) 
                                     util::friendly_duration(elapsed));
                             resp.body = json{
                                     {"status", "OK"},
-                                    {"value", oxenmq::to_base64(answer)}};
+                                    {"value", bmq::to_base64(answer)}};
                             return queue_response(std::move(data), std::move(resp));
                         case MessageTestStatus::WRONG_REQ:
                             resp.body = json{{"status", "wrong request"}};
@@ -617,11 +617,11 @@ void HTTPSServer::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
         return error_response(res, http::GONE, "long polling is no longer supported, client upgrade required");
     }
 
-    handle_request(*this, omq_, req, res, [this, started=std::chrono::steady_clock::now()]
+    handle_request(*this, bmq_, req, res, [this, started=std::chrono::steady_clock::now()]
             (std::shared_ptr<call_data> data) mutable {
-        auto& omq = data->omq;
+        auto& bmq = data->bmq;
         auto& request = data->request;
-        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
+        bmq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data), started] () mutable {
 
             if (data->replied || data->aborted) return;
@@ -643,11 +643,11 @@ void HTTPSServer::process_storage_rpc_req(HttpRequest& req, HttpResponse& res) {
 }
 
 void HTTPSServer::process_onion_req_v2(HttpRequest& req, HttpResponse& res) {
-    handle_request(*this, omq_, req, res, [this, started=std::chrono::steady_clock::now()]
+    handle_request(*this, bmq_, req, res, [this, started=std::chrono::steady_clock::now()]
             (std::shared_ptr<call_data> data) mutable {
-        auto& omq = data->omq;
+        auto& bmq = data->bmq;
         auto& request = data->request;
-        omq.inject_task("https", "https:" + request.uri, request.remote_addr,
+        bmq.inject_task("https", "https:" + request.uri, request.remote_addr,
                 [this, data=std::move(data), started] () mutable {
 
             if (data->replied || data->aborted) return;

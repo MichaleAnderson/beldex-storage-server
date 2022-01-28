@@ -7,8 +7,8 @@ namespace beldex {
 
 struct command_line_options {
     uint16_t port;
-    std::string beldexd_omq_rpc; // Defaults to ipc://$HOME/.beldex/[testnet/]beldexd.sock
-    uint16_t omq_port;
+    std::string beldexd_bmq_rpc; // Defaults to ipc://$HOME/.beldex/[testnet/]beldexd.sock
+    uint16_t bmq_port;
     bool force_start = false;
     bool print_version = false;
     bool print_help = false;
@@ -19,7 +19,7 @@ struct command_line_options {
     std::string beldexd_key; // test only (but needed for backwards compatibility)
     std::string beldexd_x25519_key;  // test only
     std::string beldexd_ed25519_key; // test only
-    // x25519 key that will be given access to get_stats omq endpoint
+    // x25519 key that will be given access to get_stats bmq endpoint
     std::vector<std::string> stats_access_keys;
 };
 

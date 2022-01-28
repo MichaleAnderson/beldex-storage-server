@@ -9,25 +9,25 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope="module")
-def omq():
-    omq = pyoxenmq.OxenMQ()
-    omq.start()
-    return omq
+def bmq():
+    bmq = pyoxenmq.BMQ()
+    bmq.start()
+    return bmq
 
 
 @pytest.fixture(scope="module")
-def mns(omq):
-    remote = omq.connect_remote("curve://public.beldex.io:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45")
-    x = omq.request(remote, "rpc.get_master_nodes")
+def mns(bmq):
+    remote = bmq.connect_remote("curve://public.beldex.io:38161/80adaead94db3b0402a6057869bdbe63204a28e93589fd95a035480ed6c03b45")
+    x = bmq.request(remote, "rpc.get_master_nodes")
     assert(len(x) == 2 and x[0] == b'200')
     return json.loads(x[1])
 
 
 @pytest.fixture(scope="module")
-def random_mn(omq, mns):
+def random_mn(bmq, mns):
     mn = random.choice(mns['master_node_states'])
     addr = "curve://{}:{}/{}".format(mn['public_ip'], mn['storage_lmq_port'], mn['pubkey_x25519'])
-    conn = omq.connect_remote(addr)
+    conn = bmq.connect_remote(addr)
     return conn
 
 

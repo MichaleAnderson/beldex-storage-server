@@ -44,23 +44,23 @@ if(NOT TARGET sodium)
     target_link_libraries(sodium INTERFACE sodium_vendor)
   endif()
 
-  # Need this target export so that oxenmq properly picks up sodium
+  # Need this target export so that bmq properly picks up sodium
   export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
 endif()
 
-option(FORCE_OXENMQ_SUBMODULE "force using oxenmq submodule" OFF)
-if(NOT STATIC AND NOT FORCE_OXENMQ_SUBMODULE)
-  pkg_check_modules(OXENMQ liboxenmq>=1.2.6 IMPORTED_TARGET)
+option(FORCE_BMQ_SUBMODULE "force using bmq submodule" OFF)
+if(NOT STATIC AND NOT FORCE_BMQ_SUBMODULE)
+  pkg_check_modules(BMQ libbmq>=1.2.6 IMPORTED_TARGET)
 endif()
-if(OXENMQ_FOUND)
-  add_library(oxenmq INTERFACE)
-  target_link_libraries(oxenmq INTERFACE PkgConfig::OXENMQ)
-  add_library(oxenmq::oxenmq ALIAS oxenmq)
-  message(STATUS "Found system liboxenmq ${OXENMQ_VERSION}")
+if(BMQ_FOUND)
+  add_library(bmq INTERFACE)
+  target_link_libraries(bmq INTERFACE PkgConfig::BMQ)
+  add_library(bmq::bmq ALIAS bmq)
+  message(STATUS "Found system libbmq ${BMQ_VERSION}")
 else()
-  message(STATUS "using oxenmq submodule")
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells oxen-mq to do a static build
-  add_subdirectory(oxen-mq)
+  message(STATUS "using bmq submodule")
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "disable shared libraries") # Tells bmq to do a static build
+  add_subdirectory(bmq)
 endif()
 
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use

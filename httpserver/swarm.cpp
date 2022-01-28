@@ -168,7 +168,7 @@ std::vector<SwarmInfo> apply_ips(
                 bool updated = false;
                 if (update_if_changed(mnode.ip, mn.ip, "0.0.0.0")) updated = true;
                 if (update_if_changed(mnode.port, mn.port, 0)) updated = true;
-                if (update_if_changed(mnode.omq_port, mn.omq_port, 0)) updated = true;
+                if (update_if_changed(mnode.bmq_port, mn.bmq_port, 0)) updated = true;
                 if (updated)
                     updates_count++;
             }
@@ -361,10 +361,10 @@ std::pair<int, int> count_missing_data(const block_update& bu) {
     for (auto& swarm : bu.swarms) {
         for (auto& mnode : swarm.mnodes) {
             total++;
-            if (mnode.ip.empty() || mnode.ip == "0.0.0.0" || !mnode.port || !mnode.omq_port ||
+            if (mnode.ip.empty() || mnode.ip == "0.0.0.0" || !mnode.port || !mnode.bmq_port ||
                     !mnode.pubkey_ed25519 || !mnode.pubkey_x25519)
             { BELDEX_LOG(warn, "well wtf {} {} {} {} {}",
-                    mnode.ip, mnode.port, mnode.omq_port, mnode.pubkey_ed25519, mnode.pubkey_x25519);
+                    mnode.ip, mnode.port, mnode.bmq_port, mnode.pubkey_ed25519, mnode.pubkey_x25519);
                 missing++;
             }
         }

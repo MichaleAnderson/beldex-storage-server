@@ -7,17 +7,17 @@ from nacl.encoding import HexEncoder, Base64Encoder
 from nacl.hash import blake2b
 from nacl.signing import VerifyKey
 
-def test_store(omq, random_mn, sk, exclude):
-    swarm = ss.get_swarm(omq, random_mn, sk)
+def test_store(bmq, random_mn, sk, exclude):
+    swarm = ss.get_swarm(bmq, random_mn, sk)
 
     mn = ss.random_swarm_members(swarm, 1, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conn = bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
 
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
     # Store a message for myself
-    s = json.loads(omq.request(conn, 'storage.store', [json.dumps({
+    s = json.loads(bmq.request(conn, 'storage.store', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
@@ -36,17 +36,17 @@ def test_store(omq, random_mn, sk, exclude):
         edpk.verify(v['hash'].encode(), base64.b64decode(v['signature']))
 
 
-def test_store_retrieve_unauthenticated(omq, random_mn, sk, exclude):
+def test_store_retrieve_unauthenticated(bmq, random_mn, sk, exclude):
     """Retrieves messages without authentication.  This test will break in the future when we turn
     on required retrieval signatures"""
-    mns = ss.random_swarm_members(ss.get_swarm(omq, random_mn, sk), 2, exclude)
-    conn1 = omq.connect_remote("curve://{}:{}/{}".format(mns[0]['ip'], mns[0]['port_omq'], mns[0]['pubkey_x25519']))
+    mns = ss.random_swarm_members(ss.get_swarm(bmq, random_mn, sk), 2, exclude)
+    conn1 = bmq.connect_remote("curve://{}:{}/{}".format(mns[0]['ip'], mns[0]['port_bmq'], mns[0]['pubkey_x25519']))
 
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
     # Store a message for myself
-    s = json.loads(omq.request(conn1, 'storage.store', [json.dumps({
+    s = json.loads(bmq.request(conn1, 'storage.store', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
@@ -57,8 +57,8 @@ def test_store_retrieve_unauthenticated(omq, random_mn, sk, exclude):
 
     assert all(v['hash'] == hash for v in s['swarm'].values())
 
-    conn2 = omq.connect_remote("curve://{}:{}/{}".format(mns[1]['ip'], mns[1]['port_omq'], mns[1]['pubkey_x25519']))
-    r = json.loads(omq.request(conn2, 'storage.retrieve', [json.dumps({
+    conn2 = bmq.connect_remote("curve://{}:{}/{}".format(mns[1]['ip'], mns[1]['port_bmq'], mns[1]['pubkey_x25519']))
+    r = json.loads(bmq.request(conn2, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex() }).encode()])[0])
 
     assert len(r['messages']) == 1
@@ -69,20 +69,20 @@ def test_store_retrieve_unauthenticated(omq, random_mn, sk, exclude):
     assert msg['hash'] == hash
 
 
-def test_store_retrieve_authenticated(omq, random_mn, sk, exclude):
+def test_store_retrieve_authenticated(bmq, random_mn, sk, exclude):
     xsk = sk.to_curve25519_private_key()
     xpk = xsk.public_key
-    mn_x = ss.random_swarm_members(ss.get_swarm(omq, random_mn, xsk), 1, exclude)[0]
-    mn_ed = ss.random_swarm_members(ss.get_swarm(omq, random_mn, sk), 1, exclude)[0]
-    conn_x = omq.connect_remote("curve://{}:{}/{}".format(mn_x['ip'], mn_x['port_omq'], mn_x['pubkey_x25519']))
-    conn_ed = omq.connect_remote("curve://{}:{}/{}".format(mn_ed['ip'], mn_ed['port_omq'], mn_ed['pubkey_x25519']))
+    mn_x = ss.random_swarm_members(ss.get_swarm(bmq, random_mn, xsk), 1, exclude)[0]
+    mn_ed = ss.random_swarm_members(ss.get_swarm(bmq, random_mn, sk), 1, exclude)[0]
+    conn_x = bmq.connect_remote("curve://{}:{}/{}".format(mn_x['ip'], mn_x['port_bmq'], mn_x['pubkey_x25519']))
+    conn_ed = bmq.connect_remote("curve://{}:{}/{}".format(mn_ed['ip'], mn_ed['port_bmq'], mn_ed['pubkey_x25519']))
 
     ts = int(time.time() * 1000)
     ttl = 86400000
     exp = ts + ttl
     # Store message for myself, using both my ed25519 key and x25519 key to test different auth
     # modes
-    s1 = json.loads(omq.request(conn_x, 'storage.store', [json.dumps({
+    s1 = json.loads(bmq.request(conn_x, 'storage.store', [json.dumps({
         "pubkey": '05' + xpk.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
@@ -93,7 +93,7 @@ def test_store_retrieve_authenticated(omq, random_mn, sk, exclude):
 
     assert all(v['hash'] == hash1 for v in s1['swarm'].values())
 
-    s2 = json.loads(omq.request(conn_ed, 'storage.store', [json.dumps({
+    s2 = json.loads(bmq.request(conn_ed, 'storage.store', [json.dumps({
         "pubkey": '03' + sk.verify_key.encode().hex(),
         "timestamp": ts,
         "ttl": ttl,
@@ -106,33 +106,33 @@ def test_store_retrieve_authenticated(omq, random_mn, sk, exclude):
     sig = sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     badsig = sig[0:4] + ('z' if sig[4] != 'z' else 'a') + sig[5:]
 
-    r_good1 = json.loads(omq.request(conn_x, 'storage.retrieve', [
+    r_good1 = json.loads(bmq.request(conn_x, 'storage.retrieve', [
         json.dumps({
             "pubkey": '05' + xpk.encode().hex(),
             "timestamp": ts,
             "signature": sig,
             "pubkey_ed25519": sk.verify_key.encode().hex()
         }).encode()])[0])
-    r_good2 = json.loads(omq.request(conn_ed, 'storage.retrieve', [
+    r_good2 = json.loads(bmq.request(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
             "signature": sig
         }).encode()])[0])
-    r_bad1 = omq.request(conn_x, 'storage.retrieve', [
+    r_bad1 = bmq.request(conn_x, 'storage.retrieve', [
         json.dumps({
             "pubkey": '05' + xpk.encode().hex(),
             "timestamp": ts,
             "signature": badsig,  # invalid sig
             "pubkey_ed25519": sk.verify_key.encode().hex()
         }).encode()])
-    r_bad2 = omq.request(conn_ed, 'storage.retrieve', [
+    r_bad2 = bmq.request(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
             "signature": badsig  # invalid sig
         }).encode()])
-    r_bad3 = omq.request(conn_ed, 'storage.retrieve', [
+    r_bad3 = bmq.request(conn_ed, 'storage.retrieve', [
         json.dumps({
             "pubkey": '03' + sk.verify_key.encode().hex(),
             "timestamp": ts,
@@ -164,19 +164,19 @@ def exactly_one(iterable):
     return found_one and not found_more
 
 
-def test_store_retrieve_multiple(omq, random_mn, sk, exclude):
-    mns = ss.random_swarm_members(ss.get_swarm(omq, random_mn, sk), 2, exclude)
-    conn1 = omq.connect_remote("curve://{}:{}/{}".format(mns[0]['ip'], mns[0]['port_omq'], mns[0]['pubkey_x25519']))
+def test_store_retrieve_multiple(bmq, random_mn, sk, exclude):
+    mns = ss.random_swarm_members(ss.get_swarm(bmq, random_mn, sk), 2, exclude)
+    conn1 = bmq.connect_remote("curve://{}:{}/{}".format(mns[0]['ip'], mns[0]['port_bmq'], mns[0]['pubkey_x25519']))
 
 
     basemsg = b"This is my message \x00<--that's a null, this is invalid utf8: \x80\xff"
 
     # Store 5 messages
-    msgs = ss.store_n(omq, conn1, sk, basemsg, 5)
+    msgs = ss.store_n(bmq, conn1, sk, basemsg, 5)
 
     # Retrieve all messages from the swarm (should give back the 5 we just stored):
-    conn2 = omq.connect_remote("curve://{}:{}/{}".format(mns[1]['ip'], mns[1]['port_omq'], mns[1]['pubkey_x25519']))
-    resp = omq.request(conn2, 'storage.retrieve', [json.dumps({
+    conn2 = bmq.connect_remote("curve://{}:{}/{}".format(mns[1]['ip'], mns[1]['port_bmq'], mns[1]['pubkey_x25519']))
+    resp = bmq.request(conn2, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex() }).encode()])
 
     assert len(resp) == 1
@@ -192,10 +192,10 @@ def test_store_retrieve_multiple(omq, random_mn, sk, exclude):
 
     # Store 6 more messages
     basemsg = b'another msg'
-    new_msgs = ss.store_n(omq, conn2, sk, basemsg, 6, 1)
+    new_msgs = ss.store_n(bmq, conn2, sk, basemsg, 6, 1)
 
     # Retrieve using a last_hash so that we should get back only the 6:
-    resp = omq.request(conn1, 'storage.retrieve', [json.dumps({
+    resp = bmq.request(conn1, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "last_hash": msgs[4]['hash']
         }).encode()])
@@ -212,7 +212,7 @@ def test_store_retrieve_multiple(omq, random_mn, sk, exclude):
         assert source['req']['expiry'] == m['expiration']
 
     # Give an unknown hash which should retrieve all:
-    r = json.loads(omq.request(conn2, 'storage.retrieve', [json.dumps({
+    r = json.loads(bmq.request(conn2, 'storage.retrieve', [json.dumps({
         "pubkey": '05' + sk.verify_key.encode().hex(),
         "last_hash": "abcdef"
         }).encode()])[0])

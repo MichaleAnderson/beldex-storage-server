@@ -10,13 +10,13 @@
 #include <string_view>
 
 #include <nlohmann/json.hpp>
-#include <oxenmq/bt_serialize.h>
+#include <bmq/bt_serialize.h>
 
 namespace beldex::rpc {
 
 using namespace std::literals;
 
-// Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the OMQ "storage.whatever"
+// Client rpc endpoints, accessible via the HTTPS storage_rpc endpoint, the BMQ "storage.whatever"
 // endpoints, and as the final target of an onion request.
 
 
@@ -30,7 +30,7 @@ struct parse_error : std::runtime_error {
 struct endpoint {
     // Loads the rpc request from json.  Throws on error (missing keys, bad values, etc.).
     virtual void load_from(nlohmann::json params) = 0;
-    virtual void load_from(oxenmq::bt_dict_consumer params) = 0;
+    virtual void load_from(bmq::bt_dict_consumer params) = 0;
 
     bool b64 = true; // True if we need to base64-encode values (i.e. for json); false if we can deal with binary (i.e. bt-encoded)
 
@@ -40,7 +40,7 @@ struct endpoint {
 // Base type for no-argument endpoints
 struct no_args : endpoint {
     void load_from(nlohmann::json) override {}
-    void load_from(oxenmq::bt_dict_consumer) override {}
+    void load_from(bmq::bt_dict_consumer) override {}
 };
 
 /// Base type for a "recursive" endpoint: that is, where the request gets forwarded from the initial
@@ -58,7 +58,7 @@ struct recursive : endpoint {
     // True on the initial client request, false on forwarded requests
     bool recurse;
 
-    virtual oxenmq::bt_value to_bt() const = 0;
+    virtual bmq::bt_value to_bt() const = 0;
 };
 
 namespace {
@@ -84,7 +84,7 @@ namespace {
 /// - `expiry` (required, unless ttl given) the message's expiry time as a unix epoch milliseconds
 /// timestamp.  (Unlike ttl, this cannot be passed as a stringified integer).
 /// - `data` (required) the message data, encoded in base64 (for json requests).  Max data size is
-/// 76800 bytes (== 102400 in b64 encoding).  For OMQ RPC requests the value is bytes.
+/// 76800 bytes (== 102400 in b64 encoding).  For BMQ RPC requests the value is bytes.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -94,7 +94,7 @@ namespace {
 ///       in bytes (not base64).  (Note: while transitioning to the 2.2.0 update, this may
 ///       instead return a hex-encoded SHA512 hash of (TIMESTAMP || TTL || PUBKEY_HEX || DATA_BASE64)).
 ///     - "signature": signature of the returned "hash" value (i.e. not in decoded bytes).  Returns
-///       in base64 for JSON requests, raw bytes for OMQ requests.
+///       in base64 for JSON requests, raw bytes for BMQ requests.
 ///     - "already": will be true if a message with this hash was already stored (note that the hash
 ///       is still included and signed even if this occurs).
 ///
@@ -110,8 +110,8 @@ struct store final : recursive {
     std::string data; // always stored here in bytes
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 /// Retrieves data from this master node. Takes keys of:
@@ -130,7 +130,7 @@ struct store final : recursive {
 /// epoch.  Must be within ±60s of the current time.  (For clients it is recommended to retrieve a
 /// timestamp via `info` first, to avoid client time sync issues).
 /// - signature -- Ed25519 signature of ("retrieve" || timestamp), where timestamp is the base10
-/// expression of the timestamp value.  Muust be base64 encoded for json requests; binary for OMQ
+/// expression of the timestamp value.  Muust be base64 encoded for json requests; binary for BMQ
 /// requests.
 /// - pubkey_ed25519 if provided *and* the pubkey has a type 05 (i.e. Session id) then `pubkey` will
 /// be interpreted as an `x25519` pubkey derived from this given ed25519 pubkey (which must be 64
@@ -148,7 +148,7 @@ struct retrieve final : endpoint {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(bmq::bt_dict_consumer params) override;
 };
 
 /// Retrieves status information about this storage server.  Takes no parameters.
@@ -174,7 +174,7 @@ struct info final : no_args {
 /// - messages -- array of message hash strings (as provided by the storage server) to delete
 /// - signature -- Ed25519 signature of ("delete" || messages...); this signs the value
 /// constructed by concatenating "delete" and all `messages` values, using `pubkey` to sign.
-/// Must be base64 encoded for json requests; binary for OMQ requests.
+/// Must be base64 encoded for json requests; binary for BMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -194,8 +194,8 @@ struct delete_msgs final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 /// Deletes all messages owned by the given pubkey on this MN and broadcasts the delete request to
@@ -212,7 +212,7 @@ struct delete_msgs final : recursive {
 ///   timestamp via `info` first, to avoid client time sync issues).
 /// - signature -- an Ed25519 signature of ( "delete_all" || timestamp ), signed by the ed25519
 /// pubkey in `pubkey` (omitting the leading prefix).  Must be base64 encoded for json requests;
-/// binary for OMQ requests.
+/// binary for BMQ requests.
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -229,8 +229,8 @@ struct delete_all final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 /// Deletes all stored messages with a timestamp earlier than the specified value and broadcasts the
@@ -246,7 +246,7 @@ struct delete_all final : recursive {
 ///   with timestamps <= this value will be deleted.  Should be <= now, but tolerance acceptance
 ///   allows it to be <= 60s from now.
 /// - signature -- Ed25519 signature of ("delete_before" || before), signed by `pubkey`.  Must be
-/// base64 encoded (json) or bytes (OMQ).
+/// base64 encoded (json) or bytes (BMQ).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -263,8 +263,8 @@ struct delete_before final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of all stored messages, and broadcasts the update request to all
@@ -280,7 +280,7 @@ struct delete_before final : recursive {
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Should be >= now, but
 ///   tolerance acceptance allows >= 60s ago.
 /// - signature -- signature of ("expire_all" || expiry), signed by `pubkey`.  Must be base64
-/// encoded (json) or bytes (OMQ).
+/// encoded (json) or bytes (BMQ).
 ///
 /// Returns dict of:
 /// - "swarms" dict mapping ed25519 pubkeys (in hex) of swarm members to dict values of:
@@ -299,8 +299,8 @@ struct expire_all final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 /// Updates (shortens) the expiry of one or more stored messages and broadcasts the update request
@@ -316,7 +316,7 @@ struct expire_all final : recursive {
 /// - expiry -- the new expiry timestamp (milliseconds since unix epoch).  Must be >= 60s ago.
 /// - signature -- Ed25519 signature of ("expire" || expiry || messages[0] || ... || messages[N])
 /// (where `expiry` is the expiry timestamp expressed as a string).  Must be base64 encoded (json)
-/// or bytes (OMQ).
+/// or bytes (BMQ).
 ///
 ///
 /// Returns dict of:
@@ -338,8 +338,8 @@ struct expire_msgs final : recursive {
     std::array<unsigned char, 64> signature;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
-    oxenmq::bt_value to_bt() const override;
+    void load_from(bmq::bt_dict_consumer params) override;
+    bmq::bt_value to_bt() const override;
 };
 
 
@@ -352,7 +352,7 @@ struct get_swarm final : endpoint {
     user_pubkey_t pubkey;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(bmq::bt_dict_consumer params) override;
 };
 
 /// Forwards an RPC request to the this storage server's beldexd.  Takes keys of:
@@ -373,7 +373,7 @@ struct beldexd_request final : endpoint {
     std::optional<nlohmann::json> params;
 
     void load_from(nlohmann::json params) override;
-    void load_from(oxenmq::bt_dict_consumer params) override;
+    void load_from(bmq::bt_dict_consumer params) override;
 };
 
 

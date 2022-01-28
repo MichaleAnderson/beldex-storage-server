@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-#include <oxenmq/hex.h>
+#include <bmq/hex.h>
 
 namespace beldex {
 

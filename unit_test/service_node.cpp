@@ -6,7 +6,7 @@
 #include "swarm.h"
 #include "time.hpp"
 
-#include <oxenmq/base64.h>
+#include <bmq/base64.h>
 
 using namespace std::literals;
 
@@ -32,12 +32,12 @@ static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
 
     auto mn = create_dummy_mn_record();
 
-    std::tie(mn.ip, mn.port, mn.omq_port) = old_addr;
+    std::tie(mn.ip, mn.port, mn.bmq_port) = old_addr;
 
     beldex::SwarmInfo si{0, std::vector<mn_record>{mn}};
     auto current = std::vector<beldex::SwarmInfo>{si};
 
-    std::tie(mn.ip, mn.port, mn.omq_port) = new_addr;
+    std::tie(mn.ip, mn.port, mn.bmq_port) = new_addr;
 
     beldex::SwarmInfo si2{0, std::vector<mn_record>{mn}};
     auto incoming = std::vector<beldex::SwarmInfo>{si2};
@@ -46,7 +46,7 @@ static auto test_ip_update(ip_ports old_addr, ip_ports new_addr,
 
     CHECK(new_records[0].mnodes[0].ip == std::get<0>(expected));
     CHECK(new_records[0].mnodes[0].port == std::get<1>(expected));
-    CHECK(new_records[0].mnodes[0].omq_port == std::get<2>(expected));
+    CHECK(new_records[0].mnodes[0].bmq_port == std::get<2>(expected));
 }
 
 TEST_CASE("master nodes - updates IP address", "[master-nodes][updates]") {
@@ -74,7 +74,7 @@ TEST_CASE("master nodes - message hashing", "[master-nodes][messages]") {
     const auto expiry = timestamp + 48h;
     beldex::user_pubkey_t pk;
     REQUIRE(pk.load("05ffba630924aa1224bb930dde21c0d11bf004608f2812217f8ac812d6c7e3ad48"));
-    const auto data = oxenmq::from_base64(
+    const auto data = bmq::from_base64(
             "CAES1gIKA1BVVBIPL2FwaS92MS9tZXNzYWdlGrsCCAYovfqZv4YvQq8CVwutUBbhRzZw80TvR6uTYMKg9DSag"
             "rtpeEpY31L7VxawfS8aSya0SiDa4J025SkjP13YX8g5pxgQ8Z6hgfNArMqr/tSijJ9miVKVDJ63YWE85O8kyW"
             "F8tdtZR5j0Vxb+JH5U8Rg1bp7ftKk3OSf7JJMcrUUrDnctQHe540zJ2OTDJ03DfubkX5NmKqEu5nhXGxeeDv3"
@@ -90,7 +90,7 @@ TEST_CASE("master nodes - message hashing", "[master-nodes][messages]") {
                 std::to_string(beldex::to_epoch_ms(timestamp)) +
                 std::to_string(beldex::to_epoch_ms(expiry) - beldex::to_epoch_ms(timestamp)) +
                 pk.prefixed_hex() +
-                oxenmq::to_base64(data)})
+                bmq::to_base64(data)})
             == expected_old);
 
     auto expected_new = "rY7K5YXNsg7d8LBP6R4OoOr6L7IMFxa3Tr8ca5v5nBI";

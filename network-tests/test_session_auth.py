@@ -9,7 +9,7 @@ from nacl.signing import VerifyKey, SigningKey
 from nacl.public import PrivateKey
 import nacl.exceptions
 
-def test_session_auth(omq, random_mn, sk, exclude):
+def test_session_auth(bmq, random_mn, sk, exclude):
     """
     Session key handling is a bit convoluted because it follows Signal's messy approach of exposing
     the more specific x25519 pubkey rather than the more general ed25519 pubkey; this test's SS's
@@ -19,11 +19,11 @@ def test_session_auth(omq, random_mn, sk, exclude):
     xsk = sk.to_curve25519_private_key()
     xpk = xsk.public_key
 
-    swarm = ss.get_swarm(omq, random_mn, xsk)
+    swarm = ss.get_swarm(bmq, random_mn, xsk)
     mn = ss.random_swarm_members(swarm, 1, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conn = bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
 
-    msgs = ss.store_n(omq, conn, xsk, b"omg123", 5)
+    msgs = ss.store_n(bmq, conn, xsk, b"omg123", 5)
 
     my_ss_id = '05' + xsk.public_key.encode().hex()
 
@@ -36,13 +36,13 @@ def test_session_auth(omq, random_mn, sk, exclude):
             "signature": sig
     }
 
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = bmq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
 
     # Expect this to fail because we didn't pass the Ed25519 key
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(bmq.request(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
         )[0])
     assert len(r['messages']) == 5
@@ -53,12 +53,12 @@ def test_session_auth(omq, random_mn, sk, exclude):
     fake_sig = fake_sk.sign(to_sign, encoder=Base64Encoder).signature.decode()
     params['pubkey_ed25519'] = fake_sk.verify_key.encode().hex()
     params['signature'] = fake_sig
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = bmq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
 
     assert resp == [b'401', b'delete_all signature verification failed']
 
     # Make sure nothing was actually deleted:
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(bmq.request(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
         )[0])
     assert len(r['messages']) == 5
@@ -66,7 +66,7 @@ def test_session_auth(omq, random_mn, sk, exclude):
     # Now send along the correct ed pubkey to make it work
     params['pubkey_ed25519'] = sk.verify_key.encode().hex()
     params['signature'] = sig
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = bmq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
 
     assert len(resp) == 1
     r = json.loads(resp[0])
@@ -81,13 +81,13 @@ def test_session_auth(omq, random_mn, sk, exclude):
 
 
     # Verify deletion
-    r = json.loads(omq.request(conn, 'storage.retrieve',
+    r = json.loads(bmq.request(conn, 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
         )[0])
     assert not r['messages']
 
 
-def test_non_session_no_ed25519(omq, random_mn, sk, exclude):
+def test_non_session_no_ed25519(bmq, random_mn, sk, exclude):
     """
     Test that the session key hack doesn't work for non-Session addresses (i.e. when not using the
     05 prefix).
@@ -96,11 +96,11 @@ def test_non_session_no_ed25519(omq, random_mn, sk, exclude):
     xsk = sk.to_curve25519_private_key()
     xpk = xsk.public_key
 
-    swarm = ss.get_swarm(omq, random_mn, xsk, netid=4)
+    swarm = ss.get_swarm(bmq, random_mn, xsk, netid=4)
     mn = ss.random_swarm_members(swarm, 1, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conn = bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
 
-    msgs = ss.store_n(omq, conn, xsk, b"omg123", 4)
+    msgs = ss.store_n(bmq, conn, xsk, b"omg123", 4)
 
     my_ss_id = '04' + xsk.public_key.encode().hex()
 
@@ -114,6 +114,6 @@ def test_non_session_no_ed25519(omq, random_mn, sk, exclude):
             "signature": sig
     }
 
-    resp = omq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
+    resp = bmq.request(conn, 'storage.delete_all', [json.dumps(params).encode()])
 
     assert resp == [b'400', b'invalid request: pubkey_ed25519 is only permitted for 05[...] pubkeys']

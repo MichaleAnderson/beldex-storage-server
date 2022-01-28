@@ -15,13 +15,13 @@ TEST_CASE("port is required", "[cli][port]") {
     {
         beldex::command_line_parser parser;
         CHECK_THROWS_WITH(
-                parser.parse_args({"httpserver", "0.0.0.0", "--omq-port", "123"}),
+                parser.parse_args({"httpserver", "0.0.0.0", "--bmq-port", "123"}),
                 "Invalid option: address and/or port missing.");
     }
     {
         beldex::command_line_parser parser;
         CHECK_THROWS_WITH(
-                parser.parse_args({"httpserver", "--force-start", "0.0.0.0", "--omq-port", "123"}),
+                parser.parse_args({"httpserver", "--force-start", "0.0.0.0", "--bmq-port", "123"}),
                 "Invalid option: address and/or port missing.");
     }
 }
@@ -49,14 +49,14 @@ TEST_CASE("version", "[cli][version]") {
 TEST_CASE("force start", "[cli][force-start]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--force-start"}));
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123", "--force-start"}));
     CHECK(parser.get_options().force_start);
 }
 
 TEST_CASE("ip and port", "[cli][ip][port]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123"}));
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123"}));
     const auto options = parser.get_options();
     CHECK(options.ip == "0.0.0.0");
     CHECK(options.port == 80);
@@ -69,7 +69,7 @@ TEST_CASE("deprecated lmq port", "[cli][deprecated]") {
     const auto options = parser.get_options();
     CHECK(options.ip == "0.0.0.0");
     CHECK(options.port == 80);
-    CHECK(options.omq_port == 123);
+    CHECK(options.bmq_port == 123);
 }
 
 
@@ -78,7 +78,7 @@ TEST_CASE("invalid port", "[cli][port]") {
     CHECK_THROWS_WITH(
             parser.parse_args({"httpserver", "0.0.0.0",
                           "8O", // notice the O instead of 0
-                          "--omq-port", "123"}),
+                          "--bmq-port", "123"}),
             "the argument ('8O') for option '--port' is invalid");
 
 }
@@ -86,22 +86,22 @@ TEST_CASE("invalid port", "[cli][port]") {
 TEST_CASE("beldexd rpc", "[cli][beldexd]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--beldexd-rpc",
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123", "--beldexd-rpc",
                 "ipc:///path/to/beldexd.sock"}));
-    CHECK(parser.get_options().beldexd_omq_rpc == "ipc:///path/to/beldexd.sock");
+    CHECK(parser.get_options().beldexd_bmq_rpc == "ipc:///path/to/beldexd.sock");
 }
 
 TEST_CASE("beldexd rpc -- tcp", "[cli][beldexd]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--beldexd-rpc",
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123", "--beldexd-rpc",
                 "tcp://127.0.0.2:3456"}));
-    CHECK(parser.get_options().beldexd_omq_rpc == "tcp://127.0.0.2:3456");
+    CHECK(parser.get_options().beldexd_bmq_rpc == "tcp://127.0.0.2:3456");
 }
 
 TEST_CASE("data dir", "[cli][datadir]") {
     beldex::command_line_parser parser;
-    REQUIRE_NOTHROW(parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123", "--data-dir",
+    REQUIRE_NOTHROW(parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123", "--data-dir",
                           "foobar"}));
     CHECK(parser.get_options().data_dir == "foobar");
 }
@@ -109,14 +109,14 @@ TEST_CASE("data dir", "[cli][datadir]") {
 TEST_CASE("default data dir", "[cli][data-dir]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123"}));
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123"}));
     CHECK(parser.get_options().data_dir == "");
 }
 
 TEST_CASE("log level", "[cli][log-level]") {
     beldex::command_line_parser parser;
     REQUIRE_NOTHROW(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123",
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123",
                 "--log-level", "foobar"}));
     CHECK(parser.get_options().log_level == "foobar");
 }
@@ -124,7 +124,7 @@ TEST_CASE("log level", "[cli][log-level]") {
 TEST_CASE("config not found", "[cli][config]") {
     beldex::command_line_parser parser;
     CHECK_THROWS_WITH(
-            parser.parse_args({"httpserver", "0.0.0.0", "80", "--omq-port", "123",
+            parser.parse_args({"httpserver", "0.0.0.0", "80", "--bmq-port", "123",
                 "--config-file", "foobar"}),
             "path provided in --config-file does not exist");
 }

@@ -8,13 +8,13 @@ from nacl.hash import blake2b
 from nacl.signing import VerifyKey
 import nacl.exceptions
 
-def test_expire_all(omq, random_mn, sk, exclude):
-    swarm = ss.get_swarm(omq, random_mn, sk)
+def test_expire_all(bmq, random_mn, sk, exclude):
+    swarm = ss.get_swarm(bmq, random_mn, sk)
     mns = ss.random_swarm_members(swarm, 2, exclude)
-    conns = [omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conns = [bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
             for mn in mns]
 
-    msgs = ss.store_n(omq, conns[0], sk, b"omg123", 5)
+    msgs = ss.store_n(bmq, conns[0], sk, b"omg123", 5)
 
     my_ss_id = '05' + sk.verify_key.encode().hex()
 
@@ -27,7 +27,7 @@ def test_expire_all(omq, random_mn, sk, exclude):
             "signature": sig
     }).encode()
 
-    resp = omq.request(conns[1], 'storage.expire_all', [params])
+    resp = bmq.request(conns[1], 'storage.expire_all', [params])
 
     assert len(resp) == 1
     r = json.loads(resp[0])
@@ -46,7 +46,7 @@ def test_expire_all(omq, random_mn, sk, exclude):
         edpk = VerifyKey(k, encoder=HexEncoder)
         edpk.verify(expected_signed, base64.b64decode(v['signature']))
 
-    r = json.loads(omq.request(conns[0], 'storage.retrieve',
+    r = json.loads(bmq.request(conns[0], 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
         )[0])
     assert len(r['messages']) == 5
@@ -58,12 +58,12 @@ def test_expire_all(omq, random_mn, sk, exclude):
     assert r['messages'][4]['expiration'] == msgs[4]['req']['expiry']
 
 
-def test_stale_expire_all(omq, random_mn, sk, exclude):
-    swarm = ss.get_swarm(omq, random_mn, sk)
+def test_stale_expire_all(bmq, random_mn, sk, exclude):
+    swarm = ss.get_swarm(bmq, random_mn, sk)
     mn = ss.random_swarm_members(swarm, 2, exclude)[0]
-    conn = omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conn = bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
 
-    msgs = ss.store_n(omq, conn, sk, b"omg123", 5)
+    msgs = ss.store_n(bmq, conn, sk, b"omg123", 5)
 
     my_ss_id = '05' + sk.verify_key.encode().hex()
 
@@ -76,17 +76,17 @@ def test_stale_expire_all(omq, random_mn, sk, exclude):
             "signature": sig
     }
 
-    resp = omq.request(conn, 'storage.expire_all', [json.dumps(params).encode()])
+    resp = bmq.request(conn, 'storage.expire_all', [json.dumps(params).encode()])
     assert resp == [b'406', b'expire_all timestamp should be >= current time']
 
 
-def test_expire(omq, random_mn, sk, exclude):
-    swarm = ss.get_swarm(omq, random_mn, sk)
+def test_expire(bmq, random_mn, sk, exclude):
+    swarm = ss.get_swarm(bmq, random_mn, sk)
     mns = ss.random_swarm_members(swarm, 2, exclude)
-    conns = [omq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_omq'], mn['pubkey_x25519']))
+    conns = [bmq.connect_remote("curve://{}:{}/{}".format(mn['ip'], mn['port_bmq'], mn['pubkey_x25519']))
             for mn in mns]
 
-    msgs = ss.store_n(omq, conns[0], sk, b"omg123", 10)
+    msgs = ss.store_n(bmq, conns[0], sk, b"omg123", 10)
 
     my_ss_id = '05' + sk.verify_key.encode().hex()
 
@@ -104,7 +104,7 @@ def test_expire(omq, random_mn, sk, exclude):
             "signature": sig
     }).encode()
 
-    resp = omq.request(conns[1], 'storage.expire', [params])
+    resp = bmq.request(conns[1], 'storage.expire', [params])
 
     assert len(resp) == 1
     r = json.loads(resp[0])
@@ -122,7 +122,7 @@ def test_expire(omq, random_mn, sk, exclude):
             print("Bad signature from swarm member {}".format(k))
             raise e
 
-    r = json.loads(omq.request(conns[0], 'storage.retrieve',
+    r = json.loads(bmq.request(conns[0], 'storage.retrieve',
         [json.dumps({ "pubkey": my_ss_id }).encode()]
         )[0])
     assert len(r['messages']) == 10

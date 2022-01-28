@@ -1,13 +1,13 @@
 #include "serialization.h"
 
 #include "beldex_logger.h"
-#include "oxenmq/bt_serialize.h"
+#include "bmq/bt_serialize.h"
 #include "master_node.h"
 #include "time.hpp"
 #include "string_utils.hpp"
 
 #include <boost/endian/conversion.hpp>
-#include <oxenmq/base64.h>
+#include <bmq/base64.h>
 
 #include <chrono>
 
@@ -32,7 +32,7 @@ void serialize_message(std::string& res, const message& msg) {
 
     res += msg.pubkey.prefixed_hex();
     serialize(res, msg.hash);
-    serialize(res, oxenmq::to_base64(msg.data));
+    serialize(res, bmq::to_base64(msg.data));
     // For backwards compat, we send expiry as a ttl
     serialize_integer(res, to_epoch_ms(msg.expiry) - to_epoch_ms(msg.timestamp));
     serialize_integer(res, to_epoch_ms(msg.timestamp));
@@ -97,8 +97,8 @@ std::vector<message> deserialize_messages_old(std::string_view slice) {
 
         /// Deserialize Data
         if (auto data = deserialize_string(slice);
-                data && oxenmq::is_base64(*data))
-            item.data = oxenmq::from_base64(*data);
+                data && bmq::is_base64(*data))
+            item.data = bmq::from_base64(*data);
         else {
             BELDEX_LOG(debug, "Could not deserialize data");
             return {};
@@ -132,7 +132,7 @@ std::vector<message> deserialize_messages_old(std::string_view slice) {
         /// values as hex, and using a rigid fixed ordering of fields.
         [[maybe_unused]] auto unused_nonce = deserialize_string(slice);
 
-        BELDEX_LOG(trace, "pk: {}, msg: {}", item.pubkey.prefixed_hex(), oxenmq::to_base64(item.data));
+        BELDEX_LOG(trace, "pk: {}, msg: {}", item.pubkey.prefixed_hex(), bmq::to_base64(item.data));
     }
 
     BELDEX_LOG(trace, "=== END ===");
@@ -155,7 +155,7 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
             v0::serialize_message(res.back(), *msg);
         }
     } else if (version == SERIALIZATION_VERSION_BT) {
-        oxenmq::bt_list l;
+        bmq::bt_list l;
         size_t counter = 2;
         while (auto* msg = next_msg()) {
             size_t ser_size =
@@ -171,13 +171,13 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
                 // Adding this message would push us over the limit, so finish it off and start a
                 // new serialization piece.
                 std::ostringstream oss;
-                oss << SERIALIZATION_VERSION_BT << oxenmq::bt_serializer(l);
+                oss << SERIALIZATION_VERSION_BT << bmq::bt_serializer(l);
                 res.push_back(oss.str());
                 l.clear();
                 counter = 1 + 2 + ser_size;
             }
             assert(msg->pubkey);
-            l.push_back(oxenmq::bt_list{{
+            l.push_back(bmq::bt_list{{
                 msg->pubkey.prefixed_raw(),
                 msg->hash,
                 to_epoch_ms(msg->timestamp),
@@ -186,7 +186,7 @@ std::vector<std::string> serialize_messages(std::function<const message*()> next
         }
 
         std::ostringstream oss;
-        oss << uint8_t{1} /* version*/ << oxenmq::bt_serializer(l);
+        oss << uint8_t{1} /* version*/ << bmq::bt_serializer(l);
         res.push_back(oss.str());
     } else {
         BELDEX_LOG(critical, "Invalid serialization version {}", +version);
@@ -222,7 +222,7 @@ std::vector<message> deserialize_messages(std::string_view slice) {
     // v1:
     std::vector<message> result;
     try {
-        oxenmq::bt_list_consumer l{slice};
+        bmq::bt_list_consumer l{slice};
         while (!l.is_finished()) {
             auto& item = result.emplace_back();
             auto m = l.consume_list_consumer();

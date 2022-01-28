@@ -2,9 +2,9 @@
 //
 // This makes onion requests via storage servers.
 //
-// It has a whole bunch of deps (cpr, oxenmq, sodium, ssl, nlohmann); I compiled with the following,
+// It has a whole bunch of deps (cpr, bmq, sodium, ssl, nlohmann); I compiled with the following,
 // using static cpr from an beldex build, SS assets built in ../build, and system-installed
-// libsodium/libssl/nlohmann/oxenmq:
+// libsodium/libssl/nlohmann/bmq:
 //
 //     g++ -std=c++17 -O2 onion-request.cpp -o onion-request ../../beldex/build/external/libcpr.a \
 //          -I../../beldex/external/cpr/include ../build/crypto/libcrypto.a -loxenmq -lsodium -lcurl -lcrypto
@@ -17,9 +17,9 @@
 #include <iostream>
 #include <random>
 #include <sodium.h>
-#include <oxenmq/hex.h>
-#include <oxenmq/base64.h>
-#include <oxenmq/oxenmq.h>
+#include <bmq/hex.h>
+#include <bmq/base64.h>
+#include <bmq/bmq.h>
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -67,8 +67,8 @@ Both PAYLOAD and CONTROL may be passed filenames to read prefixed with `@` (for 
     return 1;
 }
 
-const oxenmq::address TESTNET_OMQ{"tcp://54.80.140.73:19091/"};
-const oxenmq::address MAINNET_OMQ{"tcp://public.beldex.io:29091"};
+const bmq::address TESTNET_BMQ{"tcp://54.80.140.73:19091/"};
+const bmq::address MAINNET_BMQ{"tcp://public.beldex.io:29091"};
 
 void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_pubkey, x25519_pubkey>> keys,
         bool mainnet, std::optional<EncryptType> enc_type, std::string_view payload, std::string_view control);
@@ -76,19 +76,19 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 int main(int argc, char** argv) {
     std::vector<std::string_view> pubkeys_hex;
     std::vector<legacy_pubkey> pubkeys;
-    auto omq_addr = TESTNET_OMQ;
+    auto bmq_addr = TESTNET_BMQ;
     std::optional<EncryptType> enc_type = EncryptType::xchacha20;
     std::string payload, control;
     for (int i = 1; i < argc; i++) {
         std::string_view arg{argv[i]};
-        if (arg == "--mainnet"sv) { omq_addr = MAINNET_OMQ; continue; }
-        if (arg == "--testnet"sv) { omq_addr = TESTNET_OMQ; continue; }
+        if (arg == "--mainnet"sv) { bmq_addr = MAINNET_BMQ; continue; }
+        if (arg == "--testnet"sv) { bmq_addr = TESTNET_BMQ; continue; }
         if (arg == "--xchacha20"sv) { enc_type = EncryptType::xchacha20; continue; }
         if (arg == "--aes-gcm"sv) { enc_type = EncryptType::aes_gcm; continue; }
         if (arg == "--aes-cbc"sv) { enc_type = EncryptType::aes_cbc; continue; }
         if (arg == "--random"sv) { enc_type = std::nullopt; continue; }
 
-        bool hex = arg.size() > 0 && oxenmq::is_hex(arg);
+        bool hex = arg.size() > 0 && bmq::is_hex(arg);
         if (i >= argc - 2) {
             if (hex)
                 return usage(argv[0], "Missing PAYLOAD and CONTROL values");
@@ -113,20 +113,20 @@ int main(int argc, char** argv) {
     }
     if (pubkeys.empty()) return usage(argv[0]);
 
-    oxenmq::OxenMQ omq{};
-    omq.start();
+    bmq::BMQ bmq{};
+    bmq.start();
     std::promise<void> got;
     auto got_fut = got.get_future();
-    auto rpc = omq.connect_remote(omq_addr,
+    auto rpc = bmq.connect_remote(bmq_addr,
             [](auto) {},
-            [&got, omq_addr](auto, auto err) {
-                try { throw std::runtime_error{"Failed to connect to beldexd @ " + omq_addr.full_address() + ": " + std::string{err}}; }
+            [&got, bmq_addr](auto, auto err) {
+                try { throw std::runtime_error{"Failed to connect to beldexd @ " + bmq_addr.full_address() + ": " + std::string{err}}; }
                 catch (...) { got.set_exception(std::current_exception()); }
             });
     std::string first_ip;
     uint16_t first_port = 0;
     std::unordered_map<legacy_pubkey, std::pair<ed25519_pubkey, x25519_pubkey>> aux_keys;
-    omq.request(rpc, "rpc.get_master_nodes", [&](bool success, std::vector<std::string> data) {
+    bmq.request(rpc, "rpc.get_master_nodes", [&](bool success, std::vector<std::string> data) {
         try {
             if (!success || data[0] != "200")
                 throw std::runtime_error{"get_master_nodes request failed: " + data[0]};
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
                 auto& pk = mn.at("master_node_pubkey").get_ref<const std::string&>();
                 auto& e = mn.at("pubkey_ed25519").get_ref<const std::string&>();
                 auto& x = mn.at("pubkey_x25519").get_ref<const std::string&>();
-                if (e.size() != 64 || x.size() != 64 || !oxenmq::is_hex(x) || !oxenmq::is_hex(e))
+                if (e.size() != 64 || x.size() != 64 || !bmq::is_hex(x) || !bmq::is_hex(e))
                     throw std::runtime_error{mn.at("master_node_pubkey").get<std::string>() + " is missing ed/x25519 pubkeys"};
                 aux_keys.emplace(legacy_pubkey::from_hex(pk),
                         std::make_pair(ed25519_pubkey::from_hex(e), x25519_pubkey::from_hex(x)));
@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
         if (first_ip.empty() || !first_port)
             throw std::runtime_error{"Missing IP/port of first hop"};
 
-        onion_request(first_ip, first_port, std::move(chain), omq_addr == MAINNET_OMQ,
+        onion_request(first_ip, first_port, std::move(chain), bmq_addr == MAINNET_BMQ,
                 enc_type, payload, control);
 
     } catch (const std::exception& e) {
@@ -237,8 +237,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
     //      {"destination":"ed25519pubkey","ephemeral_key":"x25519-eph-pubkey-for-decryption","enc_type":"xchacha20"}
     //
     // (enc_type can also be aes-gcm, and defaults to that if not specified).  We forward this via
-    // oxenmq to the given ed25519pubkey (but since oxenmq uses x25519 pubkeys we first have to go
-    // look it up), sending an oxenmq request to mn.onion_req_v2 of the following (but bencoded, not
+    // bmq to the given ed25519pubkey (but since bmq uses x25519 pubkeys we first have to go
+    // look it up), sending an bmq request to mn.onion_req_v2 of the following (but bencoded, not
     // json):
     //
     //  { "d": "BLOB", "ek": "ephemeral-key-in-binary", "et": "xchacha20", "nh": N }
@@ -334,8 +334,8 @@ void onion_request(std::string ip, uint16_t port, std::vector<std::pair<ed25519_
 
     if (decrypted) {
         std::cerr << "Body is " << orig_size << " encrypted bytes, decrypted to " << body.size() << " bytes:\n";
-    } else if (oxenmq::is_base64(body)) {
-        body = oxenmq::from_base64(body);
+    } else if (bmq::is_base64(body)) {
+        body = bmq::from_base64(body);
         std::cerr << "Body was " << orig_size << " base64 bytes; decoded to " << body.size() << " bytes";
         try { body = d.decrypt(final_etype, body, keys.back().second); decrypted = true; }
         catch (...) {}

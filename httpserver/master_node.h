@@ -21,13 +21,13 @@ namespace beldex {
 
 inline constexpr size_t BLOCK_HASH_CACHE_SIZE = 30;
 
-// How long we wait for a HTTPS or OMQ ping response from another MN when ping testing
+// How long we wait for a HTTPS or BMQ ping response from another MN when ping testing
 inline constexpr auto MN_PING_TIMEOUT = 5s;
 
-// How long we wait for a storage test response (HTTPS until HF19, then OMQ)
+// How long we wait for a storage test response (HTTPS until HF19, then BMQ)
 inline constexpr auto STORAGE_TEST_TIMEOUT = 15s;
 
-// Timeout for bootstrap node OMQ requests
+// Timeout for bootstrap node BMQ requests
 inline constexpr auto BOOTSTRAP_TIMEOUT = 10s;
 
 /// We test based on the height a few blocks back to minimise discrepancies between nodes (we could
@@ -42,8 +42,8 @@ using hf_revision = std::pair<int, int>;
 inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {12, 0};
 // HF at which we switch to /ping_test/v1 instead of /swarms/ping_test/v1 for HTTPS pings
 inline constexpr hf_revision HARDFORK_HTTPS_PING_TEST_URL = {12, 1};
-// HF at which we switch to OMQ storage tests instead of HTTPS
-inline constexpr hf_revision HARDFORK_OMQ_STORAGE_TESTS = {12, 1};
+// HF at which we switch to BMQ storage tests instead of HTTPS
+inline constexpr hf_revision HARDFORK_BMQ_STORAGE_TESTS = {12, 1};
 // HF at which `store` requests become recursive (rather than having unreported background
 // distribution).
 inline constexpr hf_revision HARDFORK_RECURSIVE_STORE = {12, 1};
@@ -52,7 +52,7 @@ inline constexpr hf_revision HARDFORK_BT_MESSAGE_SERIALIZATION = {12, 1};
 // Hardfork where we switch the hash function to base64(blake2b) from hex(sha512)
 inline constexpr hf_revision HARDFORK_HASH_BLAKE2B = {12, 1};
 
-class OxenmqServer;
+class bmqServer;
 struct OnionRequestMetadata;
 class Swarm;
 
@@ -85,10 +85,10 @@ class MasterNode {
     /// Cache for block_height/block_hash mapping
     std::map<uint64_t, std::string> block_hashes_cache_;
 
-    // Need to make sure we only use this to get OxenMQ object and
+    // Need to make sure we only use this to get BMQ object and
     // not call any method that would in turn call a method in MN
     // causing a deadlock
-    OxenmqServer& omq_server_;
+    bmqServer& bmq_server_;
 
     std::atomic<int> beldexd_pings_ = 0; // Consecutive successful pings, used for batching logs about it
 
@@ -165,14 +165,14 @@ class MasterNode {
   public:
     MasterNode(mn_record address,
                 const legacy_seckey& skey,
-                OxenmqServer& omq_server,
+                bmqServer& bmq_server,
                 const std::filesystem::path& db_location,
                 bool force_start);
 
     // Return info about this node as it is advertised to other nodes
     const mn_record& own_address() { return our_address_; }
 
-    // Record the time of our last being tested over omq/https
+    // Record the time of our last being tested over bmq/https
     void update_last_ping(ReachType type);
 
     // These two are only needed because we store stats in Service Node,
@@ -290,7 +290,7 @@ class MasterNode {
     // Called when beldexd notifies us of a new block to update swarm info
     void update_swarms();
 
-    OxenmqServer& omq_server() { return omq_server_; }
+    bmqServer& bmq_server() { return bmq_server_; }
 };
 
 } // namespace beldex

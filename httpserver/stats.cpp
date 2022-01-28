@@ -3,13 +3,13 @@
 #include <chrono>
 #include <iostream>
 
-#include <oxenmq/oxenmq.h>
+#include <bmq/bmq.h>
 #include <unordered_map>
 
 namespace beldex {
 
-all_stats_t::all_stats_t(oxenmq::OxenMQ& omq) {
-    omq.add_timer([this] { cleanup(); }, STATS_CLEANUP_INTERVAL);
+all_stats_t::all_stats_t(bmq::BMQ& bmq) {
+    bmq.add_timer([this] { cleanup(); }, STATS_CLEANUP_INTERVAL);
 }
 
 static void cleanup_old(std::deque<test_result>& tests, std::chrono::system_clock::time_point cutoff_time) {

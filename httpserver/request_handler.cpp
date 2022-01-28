@@ -2,9 +2,9 @@
 #include "channel_encryption.hpp"
 #include "client_rpc_endpoints.h"
 #include "http.h"
-#include "omq_server.h"
+#include "bmq_server.h"
 #include "beldex_logger.h"
-#include "oxenmq/oxenmq.h"
+#include "bmq/bmq.h"
 #include "signature.h"
 #include "master_node.h"
 #include "string_utils.hpp"
@@ -18,9 +18,9 @@
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <openssl/sha.h>
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
+#include <bmq/base32z.h>
+#include <bmq/base64.h>
+#include <bmq/hex.h>
 #include <sodium/crypto_generichash.h>
 #include <sodium/crypto_sign.h>
 #include <sodium/crypto_scalarmult_curve25519.h>
@@ -56,13 +56,13 @@ json swarm_to_json(const SwarmInfo& swarm) {
     json mnodes_json = json::array();
     for (const auto& mn : swarm.mnodes) {
         mnodes_json.push_back(json{
-                {"address", oxenmq::to_base32z(mn.pubkey_legacy.view()) + ".mnode"}, // Deprecated, use pubkey_legacy instead
+                {"address", bmq::to_base32z(mn.pubkey_legacy.view()) + ".mnode"}, // Deprecated, use pubkey_legacy instead
                 {"pubkey_legacy", mn.pubkey_legacy.hex()},
                 {"pubkey_x25519", mn.pubkey_x25519.hex()},
                 {"pubkey_ed25519", mn.pubkey_ed25519.hex()},
                 {"port", std::to_string(mn.port)}, // Deprecated port (as a string) for backwards compat; use "port_https" instead
                 {"port_https", mn.port},
-                {"port_omq", mn.omq_port},
+                {"port_bmq", mn.bmq_port},
                 {"ip", mn.ip}});
     }
 
@@ -77,8 +77,8 @@ std::string obfuscate_pubkey(const user_pubkey_t& pk) {
     const auto& pk_raw = pk.raw();
     if (pk_raw.empty())
         return "(none)";
-    return oxenmq::to_hex(pk_raw.begin(), pk_raw.begin() + 2)
-        + u8"…" + oxenmq::to_hex(std::prev(pk_raw.end()), pk_raw.end());
+    return bmq::to_hex(pk_raw.begin(), pk_raw.begin() + 2)
+        + u8"…" + bmq::to_hex(std::prev(pk_raw.end()), pk_raw.end());
 }
 
 template <typename RPC>
@@ -228,7 +228,7 @@ std::string compute_hash_blake2b_b64(std::vector<std::string_view> parts) {
     std::array<unsigned char, HASH_SIZE> hash;
     crypto_generichash_final(&state, hash.data(), HASH_SIZE);
 
-    std::string b64hash = oxenmq::to_base64(hash.begin(), hash.end());
+    std::string b64hash = bmq::to_base64(hash.begin(), hash.end());
     // Trim padding:
     while (!b64hash.empty() && b64hash.back() == '=')
         b64hash.pop_back();
@@ -243,7 +243,7 @@ std::string compute_hash_sha512_hex(std::vector<std::string_view> parts) {
 
     std::array<unsigned char, SHA512_DIGEST_LENGTH> hash;
     SHA512_Final(hash.data(), &ctx);
-    return oxenmq::to_hex(hash.begin(), hash.end());
+    return bmq::to_hex(hash.begin(), hash.end());
 }
 
 std::string computeMessageHash(
@@ -257,7 +257,7 @@ std::string computeMessageHash(
                 timestamp,
                 to_epoch_ms(expiry) - to_epoch_ms(timestamp), // ttl
                 pubkey.prefixed_hex(),
-                oxenmq::to_base64(data));
+                bmq::to_base64(data));
     }
 
     char netid = static_cast<char>(pubkey.type());
@@ -274,7 +274,7 @@ RequestHandler::RequestHandler(
     : master_node_{mn}, channel_cipher_(ce), ed25519_sk_{std::move(edsk)} {
 
     // Periodically clean up any proxy request futures
-    master_node_.omq_server()->add_timer([this] {
+    master_node_.bmq_server()->add_timer([this] {
         pending_proxy_requests_.remove_if(
                 [](auto& f) { return f.wait_for(0ms) == std::future_status::ready; });
     }, 1s);
@@ -321,7 +321,7 @@ static void distribute_command(
     res->pending += peers.size();
 
     for (auto& peer : peers) {
-        mn.omq_server()->request(
+        mn.bmq_server()->request(
                 peer.pubkey_x25519.view(),
                 "mn.storage_cc",
                 [res, peer, cmd](bool success, auto parts) {
@@ -332,7 +332,7 @@ static void distribute_command(
                     bool good_result = success && parts.size() == 1;
                     if (good_result) {
                         try {
-                            peer_result = bt_to_json(oxenmq::bt_dict_consumer{parts[0]});
+                            peer_result = bt_to_json(bmq::bt_dict_consumer{parts[0]});
                         } catch (const std::exception& e) {
                             BELDEX_LOG(warn, "Received unparseable response to {} from {}: {}",
                                     cmd, peer.pubkey_legacy, e.what());
@@ -356,7 +356,7 @@ static void distribute_command(
                     }
                     else if (res->b64) {
                         if (auto it = peer_result.find("signature"); it != peer_result.end() && it->is_string())
-                            *it = oxenmq::to_base64(it->get_ref<const std::string&>());
+                            *it = bmq::to_base64(it->get_ref<const std::string&>());
                     }
 
                     res->result["swarm"][peer.pubkey_ed25519.hex()] = std::move(peer_result);
@@ -366,7 +366,7 @@ static void distribute_command(
                 },
                 cmd,
                 bt_serialize(req.to_bt()),
-                oxenmq::send_option::request_timeout{5s}
+                bmq::send_option::request_timeout{5s}
         );
     }
 }
@@ -392,7 +392,7 @@ void RequestHandler::process_client_req(
         rpc::store&& req, std::function<void(Response)> cb) {
 
     if (BELDEX_LOG_ENABLED(trace))
-        BELDEX_LOG(trace, "Storing message: {}", oxenmq::to_base64(req.data));
+        BELDEX_LOG(trace, "Storing message: {}", bmq::to_base64(req.data));
 
     if (!master_node_.is_pubkey_for_us(req.pubkey))
         return cb(handle_wrong_swarm(req.pubkey));
@@ -437,7 +437,7 @@ void RequestHandler::process_client_req(
     if (success) {
         mine["hash"] = message_hash;
         auto sig = create_signature(ed25519_sk_, message_hash);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
         if (!new_msg) mine["already"] = true;
         if (entry_router) {
             // Backwards compat: put the hash at top level, too.  TODO: remove eventually
@@ -465,7 +465,7 @@ void RequestHandler::process_client_req(
     if (req.params)
         beldexd_params = req.params->dump();
 
-    master_node_.omq_server().beldexd_request(
+    master_node_.bmq_server().beldexd_request(
         "rpc." + req.endpoint,
         [cb = std::move(cb)](bool success, auto&& data) {
             std::string err;
@@ -542,7 +542,7 @@ void RequestHandler::process_client_req(
             {"hash", msg.hash},
             {"timestamp", to_epoch_ms(msg.timestamp)},
             {"expiration", to_epoch_ms(msg.expiry)},
-            {"data", req.b64 ? oxenmq::to_base64(msg.data) : std::move(msg.data)},
+            {"data", req.b64 ? bmq::to_base64(msg.data) : std::move(msg.data)},
         });
     }
 
@@ -593,7 +593,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.timestamp, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -629,7 +629,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.messages, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -671,7 +671,7 @@ void RequestHandler::process_client_req(
         std::sort(deleted->begin(), deleted->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.before, *deleted);
         mine["deleted"] = std::move(*deleted);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -713,7 +713,7 @@ void RequestHandler::process_client_req(
         std::sort(updated->begin(), updated->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, *updated);
         mine["updated"] = std::move(*updated);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -754,7 +754,7 @@ void RequestHandler::process_client_req(
         std::sort(updated->begin(), updated->end());
         auto sig = create_signature(ed25519_sk_, req.pubkey.prefixed_hex(), req.expiry, req.messages, *updated);
         mine["updated"] = std::move(*updated);
-        mine["signature"] = req.b64 ? oxenmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
+        mine["signature"] = req.b64 ? bmq::to_base64(sig.begin(), sig.end()) : util::view_guts(sig);
     } else {
         mine["failed"] = true;
         mine["query_failure"] = true;
@@ -861,9 +861,9 @@ void RequestHandler::process_storage_test_req(
     if (status == MessageTestStatus::RETRY) {
         // Our first attempt returned a RETRY, so set up a timer to keep retrying
 
-        auto timer = std::make_shared<oxenmq::TimerID>();
+        auto timer = std::make_shared<bmq::TimerID>();
         auto& timer_ref = *timer;
-        master_node_.omq_server()->add_timer(timer_ref, [
+        master_node_.bmq_server()->add_timer(timer_ref, [
                 this,
                 timer=std::move(timer),
                 height,
@@ -880,7 +880,7 @@ void RequestHandler::process_storage_test_req(
                     height, tester, hash);
             if (status == MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD && !master_node_.shutting_down())
                 return; // Still retrying so wait for the next call
-            master_node_.omq_server()->cancel_timer(*timer);
+            master_node_.bmq_server()->cancel_timer(*timer);
             callback(status, std::move(answer), elapsed);
         }, TEST_RETRY_INTERVAL);
     } else {
@@ -907,7 +907,7 @@ Response RequestHandler::wrap_proxy_response(Response res,
 
     std::string ciphertext = channel_cipher_.encrypt(enc_type, body, client_key);
     if (base64)
-        ciphertext = oxenmq::to_base64(std::move(ciphertext));
+        ciphertext = bmq::to_base64(std::move(ciphertext));
 
     return Response{http::OK, std::move(ciphertext)};
 }
@@ -1017,7 +1017,7 @@ void RequestHandler::process_onion_req(
 
     pending_proxy_requests_.emplace_front(
         cpr::PostCallback(
-            [&omq=*master_node_.omq_server(), cb=std::move(data.cb)](cpr::Response r) {
+            [&bmq=*master_node_.bmq_server(), cb=std::move(data.cb)](cpr::Response r) {
                 Response res;
                 if (r.error.code != cpr::ErrorCode::OK) {
                     BELDEX_LOG(debug, "Onion proxied request to {} failed: {}", r.url.str(), r.error.message);

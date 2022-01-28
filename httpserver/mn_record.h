@@ -10,7 +10,7 @@ namespace beldex {
 struct mn_record {
     std::string ip;
     uint16_t port{0};
-    uint16_t omq_port{0};
+    uint16_t bmq_port{0};
     legacy_pubkey pubkey_legacy{};
     ed25519_pubkey pubkey_ed25519{};
     x25519_pubkey pubkey_x25519{};

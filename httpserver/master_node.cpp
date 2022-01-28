@@ -2,7 +2,7 @@
 
 #include "Database.hpp"
 #include "http.h"
-#include "omq_server.h"
+#include "bmq_server.h"
 #include "beldex_logger.h"
 #include "request_handler.h"
 #include "serialization.h"
@@ -16,10 +16,10 @@
 #include <cpr/cpr.h>
 #include <mutex>
 #include <nlohmann/json.hpp>
-#include <oxenmq/base32z.h>
-#include <oxenmq/base64.h>
-#include <oxenmq/hex.h>
-#include <oxenmq/oxenmq.h>
+#include <bmq/base32z.h>
+#include <bmq/base64.h>
+#include <bmq/hex.h>
+#include <bmq/bmq.h>
 
 #include <algorithm>
 
@@ -39,15 +39,15 @@ constexpr int CLIENT_RETRIEVE_MESSAGE_LIMIT = 100;
 MasterNode::MasterNode(
         mn_record address,
         const legacy_seckey& skey,
-        OxenmqServer& omq_server,
+        bmqServer& bmq_server,
         const std::filesystem::path& db_location,
         const bool force_start) :
       force_start_{force_start},
       db_{std::make_unique<Database>(db_location)},
       our_address_{std::move(address)},
       our_seckey_{skey},
-      omq_server_{omq_server},
-      all_stats_{*omq_server} {
+      bmq_server_{bmq_server},
+      all_stats_{*bmq_server} {
 
     swarm_ = std::make_unique<Swarm>(our_address_);
 
@@ -57,21 +57,21 @@ MasterNode::MasterNode(
     syncing_ = false;
 #endif
 
-    omq_server->add_timer([this] { std::lock_guard l{mn_mutex_}; db_->clean_expired(); },
+    bmq_server->add_timer([this] { std::lock_guard l{mn_mutex_}; db_->clean_expired(); },
             Database::CLEANUP_PERIOD);
 
     // Periodically clean up any https request futures
-    omq_server_->add_timer([this] {
+    bmq_server_->add_timer([this] {
         outstanding_https_reqs_.remove_if(
                 [](auto& f) { return f.wait_for(0ms) == std::future_status::ready; });
     }, 1s);
 
     // We really want to make sure nodes don't get stuck in "syncing" mode,
     // so if we are still "syncing" after a long time, activate MN regardless
-    auto delay_timer = std::make_shared<oxenmq::TimerID>();
+    auto delay_timer = std::make_shared<bmq::TimerID>();
     auto& dtimer = *delay_timer; // Get reference before we move away the shared_ptr
-    omq_server_->add_timer(dtimer, [this, timer=std::move(delay_timer)] {
-        omq_server_->cancel_timer(*timer);
+    bmq_server_->add_timer(dtimer, [this, timer=std::move(delay_timer)] {
+        bmq_server_->cancel_timer(*timer);
         std::lock_guard lock{mn_mutex_};
         if (!syncing_)
             return;
@@ -84,8 +84,8 @@ void MasterNode::on_beldexd_connected() {
     auto started = std::chrono::steady_clock::now();
     update_swarms();
     beldexd_ping();
-    omq_server_->add_timer([this] { beldexd_ping(); }, BELDEXD_PING_INTERVAL);
-    omq_server_->add_timer([this] { ping_peers(); },
+    bmq_server_->add_timer([this] { beldexd_ping(); }, BELDEXD_PING_INTERVAL);
+    bmq_server_->add_timer([this] { ping_peers(); },
             reachability_testing::TESTING_TIMER_INTERVAL);
 
     std::unique_lock lock{first_response_mutex_};
@@ -220,7 +220,7 @@ void MasterNode::bootstrap_data() {
         }}
     }.dump();
 
-    std::vector<oxenmq::address> seed_nodes;
+    std::vector<bmq::address> seed_nodes;
     if (beldex::is_mainnet) {
         seed_nodes.emplace_back("curve://public.beldex.io:29091/eee01f183b2079a529f4ba8933c0f0fcb8053337e003870ef6467a97f2259d73");
         seed_nodes.emplace_back("curve://seed1.beldex.io:29091/37659353131815666979acea91cefa909e3413811a5453c434879b3d7e5b7031");
@@ -234,17 +234,17 @@ void MasterNode::bootstrap_data() {
 
     for (const auto& addr : seed_nodes) {
 
-        auto connid = omq_server_->connect_remote(addr,
-                [addr](oxenmq::ConnectionID) {
+        auto connid = bmq_server_->connect_remote(addr,
+                [addr](bmq::ConnectionID) {
                     BELDEX_LOG(debug, "Connected to bootstrap node {}", addr);
                 },
-                [addr](oxenmq::ConnectionID, auto reason) {
+                [addr](bmq::ConnectionID, auto reason) {
                     BELDEX_LOG(debug, "Failed to connect to bootstrap node {}: {}", addr, reason);
                 },
-                oxenmq::connect_option::ephemeral_routing_id{true},
-                oxenmq::connect_option::timeout{BOOTSTRAP_TIMEOUT}
+                bmq::connect_option::ephemeral_routing_id{true},
+                bmq::connect_option::timeout{BOOTSTRAP_TIMEOUT}
         );
-        omq_server_->request(connid, "rpc.get_master_nodes",
+        bmq_server_->request(connid, "rpc.get_master_nodes",
             [this, connid, addr, req_counter, node_count=(int)seed_nodes.size()](bool success, auto data) {
                 if (!success)
                     BELDEX_LOG(err, "Failed to contact bootstrap node {}: request timed out", addr);
@@ -268,7 +268,7 @@ void MasterNode::bootstrap_data() {
                     }
                 }
 
-                omq_server_->disconnect(connid);
+                bmq_server_->disconnect(connid);
 
                 if (++(*req_counter) == node_count) {
                     BELDEX_LOG(info, "Bootstrapping done");
@@ -287,7 +287,7 @@ void MasterNode::bootstrap_data() {
                 }
             },
             params,
-            oxenmq::send_option::request_timeout{BOOTSTRAP_TIMEOUT}
+            bmq::send_option::request_timeout{BOOTSTRAP_TIMEOUT}
         );
     }
 }
@@ -330,10 +330,10 @@ void MasterNode::send_onion_to_mn(
     // hex, plus flexible enough to allow other metadata such as the hop number and the encryption
     // type).
     data.hop_no++;
-    omq_server_->request(
+    bmq_server_->request(
         mn.pubkey_x25519.view(), "mn.onion_request", std::move(cb),
-        oxenmq::send_option::request_timeout{30s},
-        omq_server_.encode_onion_data(payload, data));
+        bmq::send_option::request_timeout{30s},
+        bmq_server_.encode_onion_data(payload, data));
 }
 
 void MasterNode::relay_data_reliable(const std::string& blob,
@@ -342,7 +342,7 @@ void MasterNode::relay_data_reliable(const std::string& blob,
     BELDEX_LOG(debug, "Relaying data to: {} (x25519 pubkey {})",
             mn.pubkey_legacy, mn.pubkey_x25519);
 
-    omq_server_->request(
+    bmq_server_->request(
             mn.pubkey_x25519.view(),
             "mn.data",
             [](bool success, auto&& data) {
@@ -409,7 +409,7 @@ void MasterNode::on_bootstrap_update(block_update&& bu) {
     target_height_ = std::max(target_height_, bu.height);
 
     if (syncing_)
-        omq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
+        bmq_server_->set_active_mns(std::move(bu.active_x25519_pubkeys));
 }
 
 template <typename OStream>
@@ -498,7 +498,7 @@ void MasterNode::on_swarm_update(block_update&& bu) {
         return;
     }
 
-    omq_server_->set_active_sns(std::move(bu.active_x25519_pubkeys));
+    bmq_server_->set_active_mns(std::move(bu.active_x25519_pubkeys));
 
     const SwarmEvents events = swarm_->derive_swarm_events(bu.swarms);
 
@@ -578,7 +578,7 @@ void MasterNode::update_swarms() {
     if (got_first_response_ && !block_hash_.empty())
         params["poll_block_hash"] = block_hash_;
 
-    omq_server_.beldexd_request("rpc.get_master_nodes",
+    bmq_server_.beldexd_request("rpc.get_master_nodes",
         [this](bool success, std::vector<std::string> data) {
             updating_swarms_ = false;
             if (!success || data.size() < 2) {
@@ -602,13 +602,13 @@ void MasterNode::update_swarms() {
                     // Incoming tests are *usually* height - TEST_BLOCKS_BUFFER, but request a
                     // couple extra as a buffer.
                     for (uint64_t h = bu.height - TEST_BLOCKS_BUFFER - 2; h < bu.height; h++)
-                        omq_server_.beldexd_request("rpc.get_block_hash",
+                        bmq_server_.beldexd_request("rpc.get_block_hash",
                                 [this, h](bool success, std::vector<std::string> data) {
                                     if (!(success && data.size() == 2 && data[0] == "200" && data[1].size() == 66 &&
                                                 data[1].front() == '"' && data[1].back() == '"'))
                                         return;
                                     std::string_view hash{data[1].data() + 1, data[1].size() - 2};
-                                    if (oxenmq::is_hex(hash)) {
+                                    if (bmq::is_hex(hash)) {
                                         BELDEX_LOG(debug, "Pre-loaded hash {} for height {}", hash, h);
                                         block_hashes_cache_.insert_or_assign(h, hash);
                                     }
@@ -698,8 +698,8 @@ void MasterNode::ping_peers() {
 std::vector<std::pair<std::string, std::string>> MasterNode::sign_request(std::string_view body) const {
     std::vector<std::pair<std::string, std::string>> headers;
     const auto signature = generate_signature(hash_data(body), {our_address_.pubkey_legacy, our_seckey_});
-    headers.emplace_back(http::MNODE_SIGNATURE_HEADER, oxenmq::to_base64(util::view_guts(signature)));
-    headers.emplace_back(http::MNODE_SENDER_HEADER, oxenmq::to_base32z(our_address_.pubkey_legacy.view()));
+    headers.emplace_back(http::MNODE_SIGNATURE_HEADER, bmq::to_base64(util::view_guts(signature)));
+    headers.emplace_back(http::MNODE_SENDER_HEADER, bmq::to_base32z(our_address_.pubkey_legacy.view()));
     return headers;
 }
 
@@ -731,7 +731,7 @@ void MasterNode::test_reachability(const mn_record& mn, int previous_failures) {
     cpr::Body body{""};
     cpr::Header headers{
         {"Host", mn.pubkey_ed25519
-            ? oxenmq::to_base32z(mn.pubkey_ed25519.view()) + ".mnode"
+            ? bmq::to_base32z(mn.pubkey_ed25519.view()) + ".mnode"
             : "master-node.mnode"},
         {"Content-Type", "application/octet-stream"},
         {"User-Agent", "Beldex Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
@@ -744,7 +744,7 @@ void MasterNode::test_reachability(const mn_record& mn, int previous_failures) {
     BELDEX_LOG(debug, "Sending HTTPS ping to {} @ {}", mn.pubkey_legacy, url);
     outstanding_https_reqs_.emplace_front(
         cpr::PostCallback(
-            [this, &omq=*omq_server(), old_ping_test, test_results, previous_failures]
+            [this, &bmq=*bmq_server(), old_ping_test, test_results, previous_failures]
             (cpr::Response r) {
                 auto& [mn, result] = *test_results;
                 auto& pk = mn.pubkey_legacy;
@@ -796,21 +796,21 @@ void MasterNode::test_reachability(const mn_record& mn, int previous_failures) {
         )
     );
 
-    // test omq port:
-    omq_server_->request(
+    // test bmq port:
+    bmq_server_->request(
         mn.pubkey_x25519.view(), "mn.ping",
         [this, test_results=std::move(test_results), previous_failures](bool success, const auto&) {
             auto& [mn, result] = *test_results;
 
-            BELDEX_LOG(debug, "{} response for OxenMQ ping test of {}",
+            BELDEX_LOG(debug, "{} response for BMQ ping test of {}",
                     success ? "Successful" : "FAILED", mn.pubkey_legacy);
 
             if (auto r = result.exchange(success ? TEST_PASSED : TEST_FAILED); r != TEST_WAITING)
                 report_reachability(mn, success && r == TEST_PASSED, previous_failures);
         },
         // Only use an existing (or new) outgoing connection:
-        oxenmq::send_option::outgoing{},
-        oxenmq::send_option::request_timeout{MN_PING_TIMEOUT}
+        bmq::send_option::outgoing{},
+        bmq::send_option::request_timeout{MN_PING_TIMEOUT}
     );
 }
 
@@ -821,9 +821,9 @@ void MasterNode::beldexd_ping() {
     json beldexd_params{
         {"version", STORAGE_SERVER_VERSION},
         {"https_port", our_address_.port},
-        {"omq_port", our_address_.omq_port}};
+        {"bmq_port", our_address_.bmq_port}};
 
-    omq_server_.beldexd_request("admin.storage_server_ping",
+    bmq_server_.beldexd_request("admin.storage_server_ping",
         [this](bool success, std::vector<std::string> data) {
             if (!success)
                 BELDEX_LOG(critical, "Could not ping beldexd: Request failed ({})", data.front());
@@ -855,7 +855,7 @@ void MasterNode::beldexd_ping() {
     // beldexd start firing notify.block messages at as whenever new blocks arrive, but we have to
     // renew the subscription within 30min to keep it alive, so do it here (it doesn't hurt anything
     // for it to be much faster than 30min).
-    omq_server_.beldexd_request("sub.block", [](bool success, auto&& result) {
+    bmq_server_.beldexd_request("sub.block", [](bool success, auto&& result) {
         if (!success || result.empty())
             BELDEX_LOG(critical, "Failed to subscribe to beldexd block notifications: {}",
                     result.empty() ? "response is empty" : result.front());
@@ -907,12 +907,12 @@ void MasterNode::send_storage_test_req(const mn_record& testee,
                                         uint64_t test_height,
                                         const message& msg) {
 
-    if (!hf_at_least(HARDFORK_OMQ_STORAGE_TESTS)) {
+    if (!hf_at_least(HARDFORK_BMQ_STORAGE_TESTS)) {
         // Deprecated HTTPS storage test: remove after HF18.1
         cpr::Body body{json{{"height", test_height}, {"hash", msg.hash}}.dump()};
         cpr::Header headers{
             {"Host", testee.pubkey_ed25519
-                ? oxenmq::to_base32z(testee.pubkey_ed25519.view()) + ".mnode"
+                ? bmq::to_base32z(testee.pubkey_ed25519.view()) + ".mnode"
                 : "master-node.mnode"},
             {"User-Agent", "Beldex Storage Server/" + std::string{STORAGE_SERVER_VERSION_STRING}},
         };
@@ -939,8 +939,8 @@ void MasterNode::send_storage_test_req(const mn_record& testee,
                             json res_json = json::parse(r.text);
                             status = res_json.at("status").get<std::string>();
                             auto& ans = res_json.at("value").get_ref<const std::string&>();
-                            if (oxenmq::is_base64(ans))
-                                answer = oxenmq::from_base64(ans);
+                            if (bmq::is_base64(ans))
+                                answer = bmq::from_base64(ans);
                             else
                                 BELDEX_LOG(debug, "FAILED storage test of {}: body of legacy HTTP request was not base64");
                         } catch (const std::exception& e) {
@@ -969,13 +969,13 @@ void MasterNode::send_storage_test_req(const mn_record& testee,
 
     // TODO: can drop the "is hex" part of this 14+ days after HF 18.1 takes effect
     bool is_hex = msg.hash.size() == 128;
-    bool is_b64 = !is_hex && oxenmq::is_base64(msg.hash);
+    bool is_b64 = !is_hex && bmq::is_base64(msg.hash);
     if (!is_hex && !is_b64) {
         BELDEX_LOG(err, "Unable to initiate storage test: retrieved msg hash is neither SHA512+hex nor BLAKE2b+base64");
         return;
     }
 
-    omq_server_->request(
+    bmq_server_->request(
         testee.pubkey_x25519.view(), "mn.storage_test",
         [this, testee, msg, height=block_height_](bool success, auto data) {
             if (!success || data.size() != 2) {
@@ -986,10 +986,10 @@ void MasterNode::send_storage_test_req(const mn_record& testee,
                 data.resize(2);
             process_storage_test_response(testee, msg, height, std::move(data[0]), std::move(data[1]));
         },
-        oxenmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
+        bmq::send_option::request_timeout{STORAGE_TEST_TIMEOUT},
         // Data parts: test height and msg hash (in bytes)
         std::to_string(block_height_),
-        is_hex ? oxenmq::from_hex(msg.hash) : oxenmq::from_base64(msg.hash)
+        is_hex ? bmq::from_hex(msg.hash) : bmq::from_base64(msg.hash)
     );
 }
 
@@ -1027,7 +1027,7 @@ void MasterNode::report_reachability(const mn_record& mn, bool reachable, int pr
         {"passed", reachable}
     };
 
-    omq_server_.beldexd_request("admin.report_peer_status",
+    bmq_server_.beldexd_request("admin.report_peer_status",
             std::move(cb), params.dump());
 
     if (!reachable || previous_failures > 0) {
